@@ -77,6 +77,7 @@ const weaponIdMap = {
     49: "C4",
     0: "KNIFE"
 };
+
 // networking
 websocket = null
 if (location.protocol == 'https:') {
@@ -184,7 +185,7 @@ function drawPlayerBomb(pos, playerType) {
     ctx.fillText("[C4]", pos.x, textY);
 }
 
-function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
+function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
     if (!map) return;
 
     if (zoomSet) {
@@ -195,7 +196,6 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
         textSize = 12;
     }
 
-    // Always position at the top
     const textY = pos.y + 20;
 
     let displayName = playerName;
@@ -208,8 +208,8 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
         ctx.fillStyle = enemyColor;
     }
 
-    if (hasBomb) {
-        displayName += " [C4]";
+    if (isScoped) {
+        displayName += " [SCOPED]";
     }
 
     ctx.font = `${textSize}px Arial`;
@@ -338,7 +338,8 @@ function render() {
                                 data.Player.playerName,
                                 data.Player.playerType,
                                 data.Player.hasAwp,
-                                data.Player.hasBomb
+                                data.Player.hasBomb,
+                                data.Player.isScoped
                             );
                         }
 
@@ -355,10 +356,6 @@ function render() {
                                 data.Player.pos,
                                 data.Player.playerType
                             );
-                        }
-
-                        if (drawNames && data.Player.playerName) {
-                            drawPlayerName(data.Player.pos, data.Player.playerName, data.Player.playerType);
                         }
                     }
                 });
