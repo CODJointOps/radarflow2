@@ -6,7 +6,7 @@ const bombColor = "#eda338"
 const textColor = "#d1d1d1"
 
 // Settings
-shouldZoom = true
+shouldZoom = false
 drawStats = false
 
 // Common
