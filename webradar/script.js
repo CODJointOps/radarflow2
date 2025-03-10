@@ -9,6 +9,7 @@ const textColor = "#d1d1d1"
 shouldZoom = false
 
 drawStats = true
+drawNames = true
 
 // Common
 canvas = null
@@ -218,7 +219,7 @@ function render() {
                             data.Player.isScoped
                         );
 
-                        if (drawStats && data.Player.playerName) {
+                        if (drawNames && data.Player.playerName) {
                             drawPlayerName(data.Player.pos, data.Player.playerName, data.Player.playerType);
                         }
                     }
@@ -567,6 +568,7 @@ function connect() {
 addEventListener("DOMContentLoaded", (e) => {
     document.getElementById("zoomCheck").checked = false;
     document.getElementById("statsCheck").checked = true;
+    document.getElementById("namesCheck").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
@@ -584,4 +586,8 @@ function toggleZoom() {
 
 function toggleStats() {
     drawStats = !drawStats
+}
+
+function toggleNames() {
+    drawNames = !drawNames
 }
