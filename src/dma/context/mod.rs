@@ -97,6 +97,7 @@ impl DmaCtx {
         let mut team = 0i32;
         let mut clipping_weapon = 0u64;
         let mut is_scoped = 0u8;
+        let mut player_name_ptr = 0u64;
 
         {
             let mut batcher = MemoryViewBatcher::new(&mut self.process);
@@ -106,8 +107,23 @@ impl DmaCtx {
             batcher.read_into(controller + cs2dumper::client::C_BaseEntity::m_iTeamNum, &mut team);
             batcher.read_into(pawn + cs2dumper::client::C_CSPlayerPawnBase::m_pClippingWeapon, &mut clipping_weapon);
             batcher.read_into(pawn + cs2dumper::client::C_CSPlayerPawn::m_bIsScoped, &mut is_scoped);
+            batcher.read_into(controller + cs2dumper::client::CCSPlayerController::m_sSanitizedPlayerName, &mut player_name_ptr);
         }
-    
+
+        let player_name = if player_name_ptr != 0 {
+            let mut name_buffer = [0u8; 32];
+            self.process.read_raw_into(player_name_ptr.into(), &mut name_buffer)?;
+
+            let name_len = name_buffer.iter().position(|&c| c == 0).unwrap_or(name_buffer.len());
+            String::from_utf8_lossy(&name_buffer[..name_len]).to_string()
+        } else {
+            match team {
+                2 => format!("T Player"),
+                3 => format!("CT Player"),
+                _ => format!("Unknown Player"),
+            }
+        };
+
         let team = TeamID::from_i32(team);
 
         let has_awp = {
@@ -126,7 +142,8 @@ impl DmaCtx {
             team,
             health,
             has_awp,
-            is_scoped: is_scoped != 0
+            is_scoped: is_scoped != 0,
+            player_name,
         })
     }
 
@@ -252,4 +269,5 @@ pub struct BatchedPlayerData {
     pub health: u32,
     pub has_awp: bool,
     pub is_scoped: bool,
+    pub player_name: String,
 }

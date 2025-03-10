@@ -40,7 +40,7 @@ if (location.protocol == 'https:') {
 
 // Util functions
 const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
-const degreesToRadians = (degrees) => degrees * (Math.PI/180);
+const degreesToRadians = (degrees) => degrees * (Math.PI / 180);
 function makeBoundingRect(x1, y1, x2, y2, aspectRatio) {
     const topLeftX = x1;
     const topLeftY = y1;
@@ -93,7 +93,7 @@ function boundingCoordinates(coordinates, boundingRect) {
     const newX = (coordinates.x - boundingRect.x) / xScale;
     const newY = (coordinates.y - boundingRect.y) / yScale;
 
-    return {x: newX, y: newY};
+    return { x: newX, y: newY };
 }
 
 function boundingScale(value, boundingRect) {
@@ -108,7 +108,48 @@ function mapCoordinates(coordinates) {
     offset_x /= map.scale;
     offset_y /= -map.scale;
 
-    return {x: offset_x, y: offset_y}
+    return { x: offset_x, y: offset_y }
+}
+
+function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
+    if (!map) return;
+
+    if (zoomSet) {
+        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
+        textSize = boundingScale(12, boundingRect);
+    } else {
+        pos = mapCoordinates(pos);
+        textSize = 12;
+    }
+
+    const textY = pos.y + 20;
+
+    let displayName = playerName;
+    if (playerType === "Local") {
+        displayName = "YOU";
+        ctx.fillStyle = localColor;
+    } else if (playerType === "Team") {
+        ctx.fillStyle = teamColor;
+    } else if (playerType === "Enemy") {
+        ctx.fillStyle = enemyColor;
+    }
+
+    if (hasAwp) {
+        displayName += " [AWP]";
+    }
+    if (hasBomb) {
+        displayName += " [C4]";
+    }
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(displayName, pos.x, textY);
+
+    ctx.fillText(displayName, pos.x, textY);
 }
 
 function render() {
@@ -133,15 +174,14 @@ function render() {
                     } else {
                         mapCords = mapCoordinates(data.Player.pos)
                     }
-    
+
                     minX = Math.min(minX, mapCords.x);
                     minY = Math.min(minY, mapCords.y);
                     maxX = Math.max(maxX, mapCords.x);
                     maxY = Math.max(maxY, mapCords.y);
                 });
 
-
-                boundingRect = makeBoundingRect(minX-safetyBound, minY-safetyBound, maxX+safetyBound, maxY+safetyBound, image.width/image.height)
+                boundingRect = makeBoundingRect(minX - safetyBound, minY - safetyBound, maxX + safetyBound, maxY + safetyBound, image.width / image.height)
 
                 zoomSet = true
             } else if (zoomSet) {
@@ -169,14 +209,18 @@ function render() {
 
                         drawEntity(
                             data.Player.pos,
-                            fillStyle, 
+                            fillStyle,
                             data.Player.isDormant,
                             data.Player.hasBomb,
                             data.Player.yaw,
                             data.Player.hasAwp,
                             data.Player.playerType,
                             data.Player.isScoped
-                        )
+                        );
+
+                        if (drawStats && data.Player.playerName) {
+                            drawPlayerName(data.Player.pos, data.Player.playerName, data.Player.playerType);
+                        }
                     }
                 });
             }
@@ -184,13 +228,13 @@ function render() {
             if (radarData != null) {
                 if (radarData.bombPlanted && !radarData.bombExploded && radarData.bombDefuseTimeleft >= 0) {
 
-                    let maxWidth = 1024-128-128;
+                    let maxWidth = 1024 - 128 - 128;
                     let timeleft = radarData.bombDefuseTimeleft;
-    
+
                     // Base bar
                     ctx.fillStyle = "black"
                     ctx.fillRect(128, 16, maxWidth, 16)
-                    
+
                     // Bomb timer
                     if (radarData.bombBeingDefused) {
                         if (radarData.bombCanDefuse) {
@@ -202,14 +246,14 @@ function render() {
                         ctx.fillStyle = bombColor
                     }
 
-                    ctx.fillRect(130, 18, (maxWidth-2) * (timeleft / 40), 12)
+                    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12)
 
                     ctx.font = "24px Arial";
                     ctx.textAlign = "center"
                     ctx.textBaseline = "middle"
                     ctx.fillStyle = textColor
-                    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024/2, 28+24); 
-                    
+                    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, 28 + 24);
+
                     // Defuse time lines
                     ctx.strokeStyle = "black"
                     ctx.lineWidth = 2
@@ -222,8 +266,8 @@ function render() {
 
                     // Normal defuse
                     ctx.beginPath()
-                    ctx.moveTo(130 + (maxWidth-2) * (10 / 40), 16)
-                    ctx.lineTo(130 + (maxWidth-2) * (10 / 40), 32)
+                    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16)
+                    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32)
                     ctx.stroke()
 
                     // Defuse stamp line
@@ -231,8 +275,8 @@ function render() {
                         console.log(radarData.bombDefuseEnd)
                         ctx.strokeStyle = "green"
                         ctx.beginPath()
-                        ctx.moveTo(130 + (maxWidth-2) * (radarData.bombDefuseEnd / 40), 16)
-                        ctx.lineTo(130 + (maxWidth-2) * (radarData.bombDefuseEnd / 40), 32)
+                        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16)
+                        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32)
                         ctx.stroke()
                     }
                 }
@@ -244,12 +288,12 @@ function render() {
                 ctx.textAlign = "center"
                 ctx.textBaseline = "middle"
                 ctx.fillStyle = textColor
-                ctx.fillText("Not on a server", 1024/2, 1024/2); 
+                ctx.fillText("Not on a server", 1024 / 2, 1024 / 2);
             } else {
                 ctx.font = "100px Arial";
                 ctx.textAlign = "center"
                 ctx.fillStyle = textColor
-                ctx.fillText("Disconnected", 1024/2, 1024/2); 
+                ctx.fillText("Disconnected", 1024 / 2, 1024 / 2);
             }
         }
 
@@ -310,7 +354,7 @@ function drawBomb(pos, planted) {
     }
 }
 
-function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, isScoped) {
+function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, isScoped, playerName) {
     if (map == null)
         return
 
@@ -332,7 +376,7 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         ctx.font = "20px Arial";
         ctx.textAlign = "center"
         ctx.fillStyle = fillStyle
-        ctx.fillText("?", pos.x, pos.y); 
+        ctx.fillText("?", pos.x, pos.y);
     } else {
 
         if (hasAwp) {
@@ -386,9 +430,9 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         const arrowCornerY2 = pos.y - distance * Math.sin((yaw + arrowWidth) * (Math.PI / 180))
 
 
-        const cicleYaw = 90-yaw
-        const startAngle = degreesToRadians(cicleYaw-arrowWidth)-Math.PI/2
-        const endAngle = degreesToRadians(cicleYaw+arrowWidth)-Math.PI/2
+        const cicleYaw = 90 - yaw
+        const startAngle = degreesToRadians(cicleYaw - arrowWidth) - Math.PI / 2
+        const endAngle = degreesToRadians(cicleYaw + arrowWidth) - Math.PI / 2
 
         // Draw arrow
 
@@ -462,14 +506,22 @@ function connect() {
             console.log("[radarflow] Connection established")
             websocket.send("requestInfo");
         };
-        
+
         socket.onmessage = (event) => {
             if (event.data == "error") {
                 console.log("[radarflow] Server had an unknown error")
             } else {
                 let data = JSON.parse(event.data);
-                radarData = data; 
+                radarData = data;
                 freq = data.freq;
+
+                if (data.entityData) {
+                    data.entityData.forEach(entity => {
+                        if (entity.Player) {
+                            console.log(`Player: ${entity.Player.playerType}, Name: ${entity.Player.playerName || 'undefined'}`);
+                        }
+                    });
+                }
 
                 if (data.ingame == false) {
                     mapName = null
@@ -491,7 +543,7 @@ function connect() {
                 requestAnimationFrame(render);
             }
         };
-        
+
         socket.onclose = (event) => {
             if (event.wasClean) {
                 console.log("[radarflow] connection closed");
@@ -503,11 +555,11 @@ function connect() {
             websocket = null
             unloadMap()
 
-            setTimeout(function() {
+            setTimeout(function () {
                 connect();
             }, 1000);
         };
-    
+
         socket.onerror = (error) => {
             console.log(`[radarflow] websocket error: ${error}`);
         };
