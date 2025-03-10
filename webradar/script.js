@@ -515,14 +515,6 @@ function connect() {
                 radarData = data;
                 freq = data.freq;
 
-                if (data.entityData) {
-                    data.entityData.forEach(entity => {
-                        if (entity.Player) {
-                            console.log(`Player: ${entity.Player.playerType}, Name: ${entity.Player.playerName || 'undefined'}`);
-                        }
-                    });
-                }
-
                 if (data.ingame == false) {
                     mapName = null
                     entityData = null
