@@ -166,7 +166,8 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                             has_bomb,
                             local_data.has_awp,
                             local_data.is_scoped,
-                            local_data.player_name
+                            local_data.player_name,
+                            local_data.weapon_id
                         )
                     )
                 );
@@ -204,7 +205,8 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                             has_bomb,
                             player_data.has_awp,
                             player_data.is_scoped,
-                            player_data.player_name
+                            player_data.player_name,
+                            player_data.weapon_id
                         )
                     )
                 );

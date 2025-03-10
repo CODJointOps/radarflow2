@@ -10,6 +10,7 @@ shouldZoom = false
 
 drawStats = true
 drawNames = true
+drawGuns = true
 
 // Common
 canvas = null
@@ -30,6 +31,52 @@ zoomSet = false
 safetyBound = 50
 boundingRect = null
 
+// Weapon IDs
+const weaponIdMap = {
+    1: "DEAGLE",
+    2: "DUALIES",
+    3: "FIVE-SEVEN",
+    4: "GLOCK",
+    7: "AK-47",
+    8: "AUG",
+    9: "AWP",
+    10: "FAMAS",
+    11: "G3SG1",
+    13: "GALIL",
+    14: "M249",
+    16: "M4A4",
+    17: "MAC-10",
+    19: "P90",
+    23: "MP5",
+    24: "UMP",
+    25: "XM1014",
+    26: "BIZON",
+    27: "MAG-7",
+    28: "NEGEV",
+    29: "SAWED-OFF",
+    30: "TEC-9",
+    31: "ZEUS",
+    32: "P2000",
+    33: "MP7",
+    34: "MP9",
+    35: "NOVA",
+    36: "P250",
+    38: "SCAR-20",
+    39: "SG 553",
+    40: "SCOUT",
+    60: "M4A1-S",
+    61: "USP-S",
+    63: "CZ75",
+    64: "REVOLVER",
+    43: "FLASH",
+    44: "HE",
+    45: "SMOKE",
+    46: "MOLOTOV",
+    47: "DECOY",
+    48: "INCENDIARY",
+    49: "C4",
+    0: "KNIFE"
+};
 // networking
 websocket = null
 if (location.protocol == 'https:') {
@@ -123,6 +170,7 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
         textSize = 12;
     }
 
+    // Always position at the top
     const textY = pos.y + 20;
 
     let displayName = playerName;
@@ -135,9 +183,6 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
         ctx.fillStyle = enemyColor;
     }
 
-    if (hasAwp) {
-        displayName += " [AWP]";
-    }
     if (hasBomb) {
         displayName += " [C4]";
     }
@@ -151,6 +196,49 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
     ctx.strokeText(displayName, pos.x, textY);
 
     ctx.fillText(displayName, pos.x, textY);
+}
+
+function getWeaponName(weaponId) {
+    if (weaponIdMap[weaponId]) {
+        return weaponIdMap[weaponId];
+    }
+
+    if (weaponId >= 500) {
+        return "KNIFE";
+    }
+
+    return "WEAPON";
+}
+
+function drawPlayerWeapon(pos, playerType, weaponId) {
+    if (!map) return;
+
+    if (zoomSet) {
+        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
+        textSize = boundingScale(10, boundingRect);
+    } else {
+        pos = mapCoordinates(pos);
+        textSize = 10;
+    }
+
+    const textY = pos.y + (drawNames ? 35 : 20);
+
+    let weaponName = getWeaponName(weaponId);
+
+    if (weaponId === 9) {
+        ctx.fillStyle = "orange";
+    } else {
+        ctx.fillStyle = textColor;
+    }
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(`[${weaponName}]`, pos.x, textY);
+    ctx.fillText(`[${weaponName}]`, pos.x, textY);
 }
 
 function render() {
@@ -218,6 +306,24 @@ function render() {
                             data.Player.playerType,
                             data.Player.isScoped
                         );
+
+                        if (drawNames && !data.Player.isDormant) {
+                            drawPlayerName(
+                                data.Player.pos,
+                                data.Player.playerName,
+                                data.Player.playerType,
+                                data.Player.hasAwp,
+                                data.Player.hasBomb
+                            );
+                        }
+
+                        if (drawGuns && !data.Player.isDormant) {
+                            drawPlayerWeapon(
+                                data.Player.pos,
+                                data.Player.playerType,
+                                data.Player.weaponId
+                            );
+                        }
 
                         if (drawNames && data.Player.playerName) {
                             drawPlayerName(data.Player.pos, data.Player.playerName, data.Player.playerType);
@@ -569,6 +675,7 @@ addEventListener("DOMContentLoaded", (e) => {
     document.getElementById("zoomCheck").checked = false;
     document.getElementById("statsCheck").checked = true;
     document.getElementById("namesCheck").checked = true;
+    document.getElementById("gunsCheck").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
@@ -590,4 +697,8 @@ function toggleStats() {
 
 function toggleNames() {
     drawNames = !drawNames
+}
+
+function toggleGuns() {
+    drawGuns = !drawGuns
 }

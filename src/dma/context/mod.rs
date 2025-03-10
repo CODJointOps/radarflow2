@@ -126,14 +126,14 @@ impl DmaCtx {
 
         let team = TeamID::from_i32(team);
 
-        let has_awp = {
+        let (has_awp, weapon_id) = {
             let clipping_weapon: Address = clipping_weapon.into();
             let items_def_idx_addr = clipping_weapon + cs2dumper::client::C_EconEntity::m_AttributeManager 
                 + cs2dumper::client::C_AttributeContainer::m_Item + cs2dumper::client::C_EconItemView::m_iItemDefinitionIndex;
     
             let items_def_idx: i16 = self.process.read(items_def_idx_addr)?;
 
-            items_def_idx == 9
+            (items_def_idx == 9, items_def_idx)
         };
 
         Ok(BatchedPlayerData {
@@ -144,6 +144,7 @@ impl DmaCtx {
             has_awp,
             is_scoped: is_scoped != 0,
             player_name,
+            weapon_id,
         })
     }
 
@@ -270,4 +271,5 @@ pub struct BatchedPlayerData {
     pub has_awp: bool,
     pub is_scoped: bool,
     pub player_name: String,
+    pub weapon_id: i16,
 }

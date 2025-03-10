@@ -19,12 +19,15 @@ pub struct PlayerData {
     is_scoped: bool,
 
     #[serde(rename = "playerName")]
-    player_name: String
+    player_name: String,
+
+    #[serde(rename = "weaponId")]
+    weapon_id: i16,
 }
 
 impl PlayerData {
-    pub fn new(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool, is_scoped: bool, player_name: String) -> PlayerData {
-        PlayerData { pos, yaw, player_type, has_bomb, has_awp, is_scoped, player_name }
+    pub fn new(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool, is_scoped: bool, player_name: String, weapon_id: i16) -> PlayerData {
+        PlayerData { pos, yaw, player_type, has_bomb, has_awp, is_scoped, player_name, weapon_id }
     }
 }
 
