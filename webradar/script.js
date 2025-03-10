@@ -7,7 +7,8 @@ const textColor = "#d1d1d1"
 
 // Settings
 shouldZoom = false
-drawStats = false
+
+drawStats = true
 
 // Common
 canvas = null
@@ -520,8 +521,8 @@ function connect() {
 }
 
 addEventListener("DOMContentLoaded", (e) => {
-    document.getElementById("zoomCheck").checked = true;
-
+    document.getElementById("zoomCheck").checked = false;
+    document.getElementById("statsCheck").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
