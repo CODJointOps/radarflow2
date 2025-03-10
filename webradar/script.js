@@ -159,6 +159,31 @@ function mapCoordinates(coordinates) {
     return { x: offset_x, y: offset_y }
 }
 
+function drawPlayerBomb(pos, playerType) {
+    if (!map) return;
+
+    if (zoomSet) {
+        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
+        textSize = boundingScale(10, boundingRect);
+    } else {
+        pos = mapCoordinates(pos);
+        textSize = 10;
+    }
+
+    const textY = pos.y + (drawNames ? (drawGuns ? 50 : 35) : (drawGuns ? 35 : 20));
+
+    ctx.fillStyle = bombColor;
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText("[C4]", pos.x, textY);
+    ctx.fillText("[C4]", pos.x, textY);
+}
+
 function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb) {
     if (!map) return;
 
@@ -325,6 +350,13 @@ function render() {
                             );
                         }
 
+                        if (data.Player.hasBomb && !data.Player.isDormant) {
+                            drawPlayerBomb(
+                                data.Player.pos,
+                                data.Player.playerType
+                            );
+                        }
+
                         if (drawNames && data.Player.playerName) {
                             drawPlayerName(data.Player.pos, data.Player.playerName, data.Player.playerType);
                         }
@@ -442,22 +474,35 @@ function drawBomb(pos, planted) {
 
     if (zoomSet) {
         pos = boundingCoordinates(mapCoordinates(pos), boundingRect)
-        size = boundingScale(5, boundingRect);
+        size = boundingScale(8, boundingRect);
     } else {
         pos = mapCoordinates(pos)
-        size = 5
+        size = 8
     }
 
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, size, 0, 2 * Math.PI);
     ctx.fillStyle = bombColor;
     ctx.fill();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.stroke();
+
+    ctx.font = size * 1.2 + "px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "white";
+    ctx.fillText("C4", pos.x, pos.y);
+
     ctx.closePath();
 
     if (planted && ((new Date().getTime() / 1000) % 1) > 0.5) {
         ctx.strokeStyle = enemyColor
-        ctx.lineWidth = 1;
-        ctx.stroke()
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, size + 4, 0, 2 * Math.PI);
+        ctx.stroke();
     }
 }
 
@@ -513,14 +558,6 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
             ctx.fillStyle = style;
             ctx.fill();
         }
-
-        if (hasBomb) {
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, circleRadius / 2, 0, 2 * Math.PI);
-            ctx.fillStyle = bombColor;
-            ctx.fill();
-        }
-
 
         ctx.closePath();
 
