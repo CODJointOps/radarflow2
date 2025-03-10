@@ -13,7 +13,7 @@ Before you begin, install the necessary memflow plugins using memflowup from the
 The needed Plugins are `memflow-qemu` and `memflow-win32` 
 
 Clone the repo on your vm host:  
-`git clone https://github.com/superyu1337/radarflow2.git`
+`git clone https://git.deadzone.lol/Wizzard/radarflow2-kvm.git`
 
 Run radarflow:   
 `cargo run --release`
@@ -38,7 +38,7 @@ Check the dlopen documentation for all possible import paths.
 ```
 
 Clone the repo on your attacking pc:  
-`git clone https://github.com/superyu1337/radarflow2.git`
+`git clone https://git.deadzone.lol/Wizzard/radarflow2-kvm.git`
 
 Run radarflow:   
 `cargo run --release -- --connector pcileech`
