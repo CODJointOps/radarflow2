@@ -104,10 +104,12 @@ impl CsData {
                 }
             }
         } else if self.bomb_planted {
-            let bomb = ctx.get_plantedc4()
-                .expect("Failed to get planted bomb");
-
-            self.bomb = bomb;
+            match ctx.get_plantedc4() {
+                Ok(bomb) => self.bomb = bomb,
+                Err(e) => {
+                    log::warn!("Failed to get planted bomb: {}", e);
+                }
+            }
         }
     }
 

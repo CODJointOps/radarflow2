@@ -196,7 +196,8 @@ impl DmaCtx {
         let mut data_vec: Vec<(Address, u64, Vec<(u64, i32)>)> = data_vec
             .into_iter()
             .map(|(pawn, _, wep_count, wep_base)| {
-                let weps = (0..wep_count).into_iter().map(|idx| (0u64, idx)).collect();
+                let safe_count = if wep_count < 0 || wep_count > 32 { 0 } else { wep_count };
+                let weps = (0..safe_count).into_iter().map(|idx| (0u64, idx)).collect();
                 (pawn, wep_base, weps)
             })
             .collect();
@@ -206,7 +207,7 @@ impl DmaCtx {
         data_vec.iter_mut().for_each(|(_, wep_base, wep_data_vec)| {
             wep_data_vec.iter_mut().for_each(|(_, idx)| {
                 let b: Address = (*wep_base).into();
-                batcher.read_into(b + * idx * 0x4, idx);
+                batcher.read_into(b + u64::saturating_mul(*idx as u64, 0x4), idx);
             });
         });
         drop(batcher);

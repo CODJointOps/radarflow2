@@ -76,10 +76,18 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                 .into_iter()
                 .map(|(_, pawn)| pawn)
                 .collect();
-
-            pawns.push(data.local_pawn.into());
         
+            pawns.push(data.local_pawn.into());
+
+            let prev_holder = data.bomb_holder;
+
             data.bomb_holder = ctx.get_c4_holder(pawns, data.entity_list.into(), &data);
+
+            if data.bomb_holder.is_some() && prev_holder.is_none() {
+                log::debug!("Bomb picked up by player");
+                data.bomb_dropped = false;
+            }
+
             data.recheck_bomb_holder = false;
         }
 
@@ -138,18 +146,25 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
             // Bomb
             if data.bomb_dropped || data.bomb_planted {
-                let node = ctx.process.read_addr64(
+                if let Ok(node) = ctx.process.read_addr64(
                     data.bomb + cs2dumper::client::C_BaseEntity::m_pGameSceneNode as u64
-                ).unwrap();
-                let pos = ctx.process.read(node + cs2dumper::client::CGameSceneNode::m_vecAbsOrigin).unwrap();
-    
-                entity_data.push(EntityData::Bomb(BombData::new(pos, data.bomb_planted)));
+                ) {
+                    if let Ok(pos) = ctx.process.read(node + cs2dumper::client::CGameSceneNode::m_vecAbsOrigin) {
+                        entity_data.push(EntityData::Bomb(BombData::new(pos, data.bomb_planted)));
+                    }
+                }
             }
 
             // Local player
-            let local_data = ctx.batched_player_read(
+            let local_data = match ctx.batched_player_read(
                 data.local.into(), data.local_pawn.into()
-            ).unwrap();
+            ) {
+                Ok(data) => data,
+                Err(e) => {
+                    log::warn!("Failed to read local player data: {}", e);
+                    continue;
+                }
+            };
 
             if local_data.health > 0 {
                 let has_bomb = match data.bomb_holder {
@@ -160,7 +175,7 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                 entity_data.push(
                     EntityData::Player(
                         PlayerData::new(
-                            local_data.pos, 
+                            local_data.pos,
                             local_data.yaw,
                             PlayerType::Local,
                             has_bomb,
@@ -175,41 +190,47 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
             // Other players
             for (controller, pawn) in &data.players {
-                let player_data = ctx.batched_player_read(*controller, *pawn).unwrap();
+                match ctx.batched_player_read(*controller, *pawn) {
+                    Ok(player_data) => {
+                        if player_data.health < 1 {
+                            continue;
+                        }
 
-                if player_data.health < 1 {
-                    continue;
-                }
+                        let has_bomb = match data.bomb_holder {
+                            Some(bh) => *pawn == bh,
+                            None => false,
+                        };
 
-                let has_bomb = match data.bomb_holder {
-                    Some(bh) => *pawn == bh,
-                    None => false,
-                };
+                        let player_type = {
+                            if local_data.team != player_data.team {
+                                PlayerType::Enemy
+                            } else if local_data.team == player_data.team {
+                                PlayerType::Team
+                            } else {
+                                PlayerType::Unknown
+                            }
+                        };
 
-                let player_type = {
-                    if local_data.team != player_data.team {
-                        PlayerType::Enemy
-                    } else if local_data.team == player_data.team {
-                        PlayerType::Team
-                    } else {
-                        PlayerType::Unknown
+                        entity_data.push(
+                            EntityData::Player(
+                                PlayerData::new(
+                                    player_data.pos,
+                                    player_data.yaw,
+                                    player_type,
+                                    has_bomb,
+                                    player_data.has_awp,
+                                    player_data.is_scoped,
+                                    player_data.player_name,
+                                    player_data.weapon_id
+                                )
+                            )
+                        );
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to read player data: {}", e);
+                        continue;
                     }
-                };
-
-                entity_data.push(
-                    EntityData::Player(
-                        PlayerData::new(
-                            player_data.pos, 
-                            player_data.yaw,
-                            player_type,
-                            has_bomb,
-                            player_data.has_awp,
-                            player_data.is_scoped,
-                            player_data.player_name,
-                            player_data.weapon_id
-                        )
-                    )
-                );
+                }
             }
 
             let mut radar = radar_data.write().await;
