@@ -52,6 +52,20 @@ pub enum EntityData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheatOptions {
+    #[serde(rename = "revealMoney")]
+    pub reveal_money: bool,
+}
+
+impl Default for CheatOptions {
+    fn default() -> Self {
+        Self {
+            reveal_money: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadarData {
     freq: usize,
     ingame: bool,
@@ -83,13 +97,30 @@ pub struct RadarData {
     #[serde(rename(serialize = "entityData"))]
     player_data: Vec<EntityData>,
 
-    //#[serde(rename(serialize = "localYaw"))]
-    //local_yaw: f32,
+    #[serde(rename = "options")]
+    options: CheatOptions,
+
+    #[serde(skip)]
+    pub money_reveal_enabled: bool,
 }
 
 impl RadarData {
     pub fn new(ingame: bool, map_name: String, player_data: Vec<EntityData>, freq: usize, bomb_planted: bool, bomb_cannot_defuse: bool, bomb_defuse_timeleft: f32, bomb_exploded: bool, bomb_being_defused: bool, bomb_defuse_length: f32, bomb_defuse_end: f32) -> RadarData {
-        RadarData { ingame, map_name, player_data, freq, bomb_planted, bomb_can_defuse: bomb_cannot_defuse, bomb_defuse_timeleft, bomb_exploded, bomb_being_defused, bomb_defuse_length, bomb_defuse_end }
+        RadarData {
+            ingame,
+            map_name,
+            player_data,
+            freq,
+            bomb_planted,
+            bomb_can_defuse: bomb_cannot_defuse,
+            bomb_defuse_timeleft,
+            bomb_exploded,
+            bomb_being_defused,
+            bomb_defuse_length,
+            bomb_defuse_end,
+            options: CheatOptions::default(),
+            money_reveal_enabled: false
+        }
     }
 
     /// Returns empty RadarData, it's also the same data that gets sent to clients when not ingame
@@ -105,8 +136,19 @@ impl RadarData {
             bomb_exploded: false,
             bomb_being_defused: false,
             bomb_defuse_length: 0.0,
-            bomb_defuse_end: 0.0
+            bomb_defuse_end: 0.0,
+            options: CheatOptions::default(),
+            money_reveal_enabled: false
         }
+    }
+
+    pub fn set_reveal_money(&mut self, value: bool) {
+        self.options.reveal_money = value;
+        self.money_reveal_enabled = value;
+    }
+
+    pub fn get_reveal_money(&self) -> bool {
+        self.options.reveal_money
     }
 }
 

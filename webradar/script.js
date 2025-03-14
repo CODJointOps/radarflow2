@@ -652,28 +652,36 @@ function connect() {
             if (event.data == "error") {
                 console.log("[radarflow] Server had an unknown error")
             } else {
-                let data = JSON.parse(event.data);
-                radarData = data;
-                freq = data.freq;
+                try {
+                    let data = JSON.parse(event.data);
+                    radarData = data;
+                    freq = data.freq;
 
-                if (data.ingame == false) {
-                    mapName = null
-                    entityData = null
-
-                    if (loaded)
-                        unloadMap()
-                } else {
-                    if (!loaded) {
-                        mapName = data.mapName
-                        entityData = data.entityData
-                        loadMap(mapName)
-                    } else {
-                        entityData = data.entityData
+                    if (data.money_reveal_enabled !== undefined) {
+                        document.getElementById("moneyReveal").checked = data.money_reveal_enabled;
                     }
-                }
 
-                update = true
-                requestAnimationFrame(render);
+                    if (data.ingame == false) {
+                        mapName = null
+                        entityData = null
+
+                        if (loaded)
+                            unloadMap()
+                    } else {
+                        if (!loaded) {
+                            mapName = data.mapName
+                            entityData = data.entityData
+                            loadMap(mapName)
+                        } else {
+                            entityData = data.entityData
+                        }
+                    }
+
+                    update = true
+                    requestAnimationFrame(render);
+                } catch (e) {
+                    console.error("[radarflow] Error parsing server message:", e, event.data);
+                }
             }
         };
 
@@ -710,6 +718,7 @@ addEventListener("DOMContentLoaded", (e) => {
     document.getElementById("statsCheck").checked = true;
     document.getElementById("namesCheck").checked = true;
     document.getElementById("gunsCheck").checked = true;
+    document.getElementById("moneyReveal").checked = false;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
@@ -735,4 +744,10 @@ function toggleNames() {
 
 function toggleGuns() {
     drawGuns = !drawGuns
+}
+
+function toggleMoneyReveal() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send("toggleMoneyReveal");
+    }
 }

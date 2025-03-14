@@ -4,17 +4,28 @@ use memflow::{mem::MemoryView, os::Process, types::Address};
 
 use crate::{enums::PlayerType, comms::{EntityData, PlayerData, RadarData, ArcRwlockRadarData, BombData}};
 
+use crate::money_reveal::MoneyReveal;
+
 use self::{context::DmaCtx, threaddata::CsData};
 
-mod context;
-mod threaddata;
+pub mod context;
+pub mod threaddata;
 mod cs2dumper;
 
 pub use context::Connector;
 
 pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_device: String, skip_version: bool) -> anyhow::Result<()> {
     let mut ctx = DmaCtx::setup(connector, pcileech_device, skip_version)?;
-    let mut data = CsData { recheck_bomb_holder: true, ..Default::default() };
+    let mut data = CsData {
+        recheck_bomb_holder: true,
+        money_reveal_enabled: false,
+        ..Default::default()
+    };
+
+    let mut money_reveal = MoneyReveal::new();
+    if let Err(e) = money_reveal.init(&mut ctx.process, &ctx.client_module) {
+        log::warn!("Failed to initialize money reveal: {}", e);
+    }
     
     // For read timing
     let mut last_bomb_dropped = false;
@@ -46,6 +57,17 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
         }
 
         data.update_common(&mut ctx);
+
+        {
+            let radar = radar_data.read().await;
+            if radar.money_reveal_enabled != data.money_reveal_enabled {
+                data.money_reveal_enabled = radar.money_reveal_enabled;
+
+                if let Err(e) = money_reveal.toggle(&mut ctx.process) {
+                    log::warn!("Failed to toggle money reveal: {}", e);
+                }
+            }
+        }
 
         // Bomb update
         if (data.bomb_dropped && !last_bomb_dropped) || (data.bomb_planted && !last_bomb_planted) {
@@ -247,9 +269,12 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                 data.bomb_defuse_length,
                 bomb_defuse_end
             );
+
+            radar.money_reveal_enabled = data.money_reveal_enabled;
         } else {
             let mut radar = radar_data.write().await;
             *radar = RadarData::empty(freq);
+            radar.money_reveal_enabled = data.money_reveal_enabled;
         }
 
         last_tick_count = data.tick_count;
@@ -262,6 +287,11 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
         }
     
         thread::sleep(Duration::from_millis(1));
+    }
+
+    let cleanup_result = money_reveal.ensure_disabled(&mut ctx.process);
+    if let Err(e) = cleanup_result {
+        log::warn!("Failed to cleanup money reveal: {}", e);
     }
 
     Ok(())

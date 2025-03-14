@@ -38,6 +38,7 @@ pub struct CsData {
     pub bomb_defuse_length: f32,
     pub bomb_exploded: bool,
     pub bomb_defused: bool,
+    pub money_reveal_enabled: bool,
 }
 
 

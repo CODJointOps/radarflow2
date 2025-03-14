@@ -6,7 +6,7 @@ use memflow::plugins::Inventory;
 use crate::dma::Connector;
 const PORT_RANGE: std::ops::RangeInclusive<usize> = 8000..=65535;
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(author, version = version(), about, long_about = None)]
 pub struct Cli {
     /// Specifies the connector type for DMA

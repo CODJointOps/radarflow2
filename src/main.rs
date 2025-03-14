@@ -13,6 +13,9 @@ mod comms;
 mod dma;
 mod websocket;
 
+mod pattern;
+mod money_reveal;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli: Cli = Cli::parse();
@@ -29,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let radar_clone = radar_data.clone();
+
     let dma_handle = tokio::spawn(async move {
         if let Err(err) = dma::run(radar_clone, cli.connector, cli.pcileech_device, cli.skip_version).await {
             log::error!("Error in dma thread: [{}]", err.to_string());
@@ -37,16 +41,19 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    let web_path = cli.web_path.clone();
+    let port = cli.port;
+
     let _websocket_handle = tokio::spawn(async move {
         if let Ok(my_local_ip) = local_ip_address::local_ip() {
-            let address = format!("http://{}:{}", my_local_ip, cli.port);
+            let address = format!("http://{}:{}", my_local_ip, port);
             println!("Launched webserver at {}", address);
         } else {
-            let address = format!("http://0.0.0.0:{}", cli.port);
+            let address = format!("http://0.0.0.0:{}", port);
             println!("launched webserver at {}", address);
         }
 
-        if let Err(err) = websocket::run(cli.web_path, cli.port, radar_data).await {
+        if let Err(err) = websocket::run(web_path, port, radar_data).await {
             log::error!("Error in ws server: [{}]", err.to_string());
         }
     });
