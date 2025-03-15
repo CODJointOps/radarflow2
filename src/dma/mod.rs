@@ -196,7 +196,7 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
                 entity_data.push(
                     EntityData::Player(
-                        PlayerData::new(
+                        PlayerData::new_with_money(
                             local_data.pos,
                             local_data.yaw,
                             PlayerType::Local,
@@ -204,10 +204,12 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                             local_data.has_awp,
                             local_data.is_scoped,
                             local_data.player_name,
-                            local_data.weapon_id
+                            local_data.weapon_id,
+                            local_data.money
                         )
                     )
                 );
+                log::debug!("Added local player with money: {}", local_data.money);
             }
 
             // Other players
@@ -235,7 +237,7 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
                         entity_data.push(
                             EntityData::Player(
-                                PlayerData::new(
+                                PlayerData::new_with_money(
                                     player_data.pos,
                                     player_data.yaw,
                                     player_type,
@@ -243,7 +245,8 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                                     player_data.has_awp,
                                     player_data.is_scoped,
                                     player_data.player_name,
-                                    player_data.weapon_id
+                                    player_data.weapon_id,
+                                    player_data.money
                                 )
                             )
                         );

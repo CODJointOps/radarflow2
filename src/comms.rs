@@ -23,11 +23,40 @@ pub struct PlayerData {
 
     #[serde(rename = "weaponId")]
     weapon_id: i16,
+
+    #[serde(rename = "money", default)]
+    money: i32,
 }
 
 impl PlayerData {
-    pub fn new(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool, is_scoped: bool, player_name: String, weapon_id: i16) -> PlayerData {
-        PlayerData { pos, yaw, player_type, has_bomb, has_awp, is_scoped, player_name, weapon_id }
+    pub fn new(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool,
+               is_scoped: bool, player_name: String, weapon_id: i16) -> PlayerData {
+        PlayerData {
+            pos,
+            yaw,
+            player_type,
+            has_bomb,
+            has_awp,
+            is_scoped,
+            player_name,
+            weapon_id,
+            money: 0
+        }
+    }
+
+    pub fn new_with_money(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool,
+                    is_scoped: bool, player_name: String, weapon_id: i16, money: i32) -> PlayerData {
+        PlayerData {
+            pos,
+            yaw,
+            player_type,
+            has_bomb,
+            has_awp,
+            is_scoped,
+            player_name,
+            weapon_id,
+            money
+        }
     }
 }
 
@@ -55,12 +84,16 @@ pub enum EntityData {
 pub struct CheatOptions {
     #[serde(rename = "revealMoney")]
     pub reveal_money: bool,
+
+    #[serde(rename = "displayMoney")]
+    pub display_money: bool,
 }
 
 impl Default for CheatOptions {
     fn default() -> Self {
         Self {
             reveal_money: false,
+            display_money: true,
         }
     }
 }

@@ -98,6 +98,8 @@ impl DmaCtx {
         let mut clipping_weapon = 0u64;
         let mut is_scoped = 0u8;
         let mut player_name_ptr = 0u64;
+        let mut money = 0i32;
+        let mut money_services_ptr = 0u64;
 
         {
             let mut batcher = MemoryViewBatcher::new(&mut self.process);
@@ -108,6 +110,15 @@ impl DmaCtx {
             batcher.read_into(pawn + cs2dumper::client::C_CSPlayerPawnBase::m_pClippingWeapon, &mut clipping_weapon);
             batcher.read_into(pawn + cs2dumper::client::C_CSPlayerPawn::m_bIsScoped, &mut is_scoped);
             batcher.read_into(controller + cs2dumper::client::CCSPlayerController::m_sSanitizedPlayerName, &mut player_name_ptr);
+
+            batcher.read_into(controller + cs2dumper::client::CCSPlayerController::m_pInGameMoneyServices, &mut money_services_ptr);
+        }
+
+        if money_services_ptr != 0 {
+            let money_addr: Address = money_services_ptr.into();
+            money = self.process.read(money_addr + cs2dumper::client::CCSPlayerController_InGameMoneyServices::m_iAccount)?;
+
+            log::debug!("Read money value: {} for player", money);
         }
 
         let player_name = if player_name_ptr != 0 {
@@ -145,6 +156,7 @@ impl DmaCtx {
             is_scoped: is_scoped != 0,
             player_name,
             weapon_id,
+            money,
         })
     }
 
@@ -273,4 +285,5 @@ pub struct BatchedPlayerData {
     pub is_scoped: bool,
     pub player_name: String,
     pub weapon_id: i16,
+    pub money: i32,
 }

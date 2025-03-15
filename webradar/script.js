@@ -13,6 +13,7 @@ playerCentered = true
 drawStats = true
 drawNames = true
 drawGuns = true
+drawMoney = true;
 
 // Common
 canvas = null
@@ -274,6 +275,16 @@ function render() {
                                 data.Player.playerType
                             );
                         }
+
+                        if (drawMoney && !data.Player.isDormant && typeof data.Player.money === 'number') {
+                            console.log(`[radarflow] Drawing money for ${data.Player.playerName}: $${data.Player.money}`);
+                            drawPlayerMoney(
+                                data.Player.pos,
+                                data.Player.playerType,
+                                data.Player.money,
+                                data.Player.hasBomb
+                            );
+                        }
                     }
                 });
             }
@@ -455,6 +466,64 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) 
     ctx.strokeStyle = "black";
     ctx.strokeText(displayName, mapPos.x, textY);
     ctx.fillText(displayName, mapPos.x, textY);
+}
+
+function drawPlayerMoney(pos, playerType, money, hasBomb) {
+    if (!map) return;
+
+    console.log(`[radarflow] Drawing money: $${money} for ${playerType}`);
+
+    let mapPos = mapCoordinates(pos);
+    let textSize;
+
+    if (zoomSet) {
+        mapPos = boundingCoordinates(mapPos, boundingRect);
+        textSize = boundingScale(10, boundingRect);
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+        textSize = 10;
+    } else {
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+        textSize = 10;
+    }
+
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+    }
+
+    let extraOffset = 0;
+    if (drawNames) extraOffset += 15;
+    if (drawGuns) extraOffset += 15;
+    if (hasBomb) extraOffset += 15;
+
+    let textY = mapPos.y + 20 + extraOffset;
+
+    const formattedMoney = '$' + (money || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+    if (money >= 10000) {
+        ctx.fillStyle = "#32CD32";
+    } else if (money >= 4500) {
+        ctx.fillStyle = "#FFFF00";
+    } else {
+        ctx.fillStyle = "#FF4500";
+    }
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(formattedMoney, mapPos.x, textY);
+    ctx.fillText(formattedMoney, mapPos.x, textY);
 }
 
 function drawPlayerWeapon(pos, playerType, weaponId) {
@@ -853,6 +922,7 @@ addEventListener("DOMContentLoaded", (e) => {
     document.getElementById("moneyReveal").checked = false;
     document.getElementById("rotateCheck").checked = true;
     document.getElementById("centerCheck").checked = true;
+    document.getElementById("moneyDisplay").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
@@ -892,4 +962,13 @@ function toggleMoneyReveal() {
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send("toggleMoneyReveal");
     }
+}
+
+function toggleDisplayMoney() {
+    drawMoney = !drawMoney;
+    update = true;
+
+    console.log("[radarflow] Money display toggled:", drawMoney);
+
+    localStorage.setItem('drawMoney', drawMoney ? 'true' : 'false');
 }
