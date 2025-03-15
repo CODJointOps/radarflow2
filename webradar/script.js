@@ -7,6 +7,8 @@ const textColor = "#d1d1d1"
 
 // Settings
 shouldZoom = false
+rotateMap = true
+playerCentered = true
 
 drawStats = true
 drawNames = true
@@ -25,6 +27,8 @@ mapName = null
 loaded = false
 entityData = null
 update = false
+localYaw = 0
+localPlayerPos = null
 
 /// Radarflow zoom in
 zoomSet = false
@@ -90,6 +94,49 @@ if (location.protocol == 'https:') {
 // Util functions
 const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
 const degreesToRadians = (degrees) => degrees * (Math.PI / 180);
+
+function mapCoordinates(coordinates) {
+    let offset_x = coordinates.x - map.pos_x;
+    let offset_y = coordinates.y - map.pos_y;
+
+    offset_x /= map.scale;
+    offset_y /= -map.scale;
+
+    return { x: offset_x, y: offset_y };
+}
+
+function boundingCoordinates(coordinates, boundingRect) {
+    const xScale = boundingRect.width / image.width;
+    const yScale = boundingRect.height / image.height;
+
+    const newX = (coordinates.x - boundingRect.x) / xScale;
+    const newY = (coordinates.y - boundingRect.y) / yScale;
+
+    return { x: newX, y: newY };
+}
+
+function boundingScale(value, boundingRect) {
+    const scale = image.width / boundingRect.width;
+    return value * scale;
+}
+
+function rotatePoint(cx, cy, x, y, angle) {
+    const radians = degreesToRadians(angle);
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+
+    const nx = x - cx;
+    const ny = y - cy;
+
+    const rx = nx * cos - ny * sin;
+    const ry = nx * sin + ny * cos;
+
+    return {
+        x: rx + cx,
+        y: ry + cy
+    };
+}
+
 function makeBoundingRect(x1, y1, x2, y2, aspectRatio) {
     const topLeftX = x1;
     const topLeftY = y1;
@@ -118,175 +165,43 @@ function makeBoundingRect(x1, y1, x2, y2, aspectRatio) {
     const rectMinY = centerY - newHeight / 2;
     const rectMaxY = centerY + newHeight / 2;
 
-    const boundingRectangle = {
+    return {
         x: rectMinX,
         y: rectMinY,
         width: rectMaxX - rectMinX,
         height: rectMaxY - rectMinY,
-    }
-
-    const boundingRectangle2 = {
-        x: 0,
-        y: 0,
-        width: image.width / 1.2,
-        height: image.width / 1.2,
-    }
-
-    return boundingRectangle;
-}
-
-function boundingCoordinates(coordinates, boundingRect) {
-    const xScale = boundingRect.width / image.width;
-    const yScale = boundingRect.height / image.height;
-
-    const newX = (coordinates.x - boundingRect.x) / xScale;
-    const newY = (coordinates.y - boundingRect.y) / yScale;
-
-    return { x: newX, y: newY };
-}
-
-function boundingScale(value, boundingRect) {
-    const scale = image.width / boundingRect.width;
-    return value * scale
-}
-
-function mapCoordinates(coordinates) {
-    let offset_x = coordinates.x - map.pos_x;
-    let offset_y = coordinates.y - map.pos_y;
-
-    offset_x /= map.scale;
-    offset_y /= -map.scale;
-
-    return { x: offset_x, y: offset_y }
-}
-
-function drawPlayerBomb(pos, playerType) {
-    if (!map) return;
-
-    if (zoomSet) {
-        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
-        textSize = boundingScale(10, boundingRect);
-    } else {
-        pos = mapCoordinates(pos);
-        textSize = 10;
-    }
-
-    const textY = pos.y + (drawNames ? (drawGuns ? 50 : 35) : (drawGuns ? 35 : 20));
-
-    ctx.fillStyle = bombColor;
-
-    ctx.font = `${textSize}px Arial`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "black";
-    ctx.strokeText("[C4]", pos.x, textY);
-    ctx.fillText("[C4]", pos.x, textY);
-}
-
-function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
-    if (!map) return;
-
-    if (zoomSet) {
-        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
-        textSize = boundingScale(12, boundingRect);
-    } else {
-        pos = mapCoordinates(pos);
-        textSize = 12;
-    }
-
-    const textY = pos.y + 20;
-
-    let displayName = playerName;
-    if (playerType === "Local") {
-        displayName = "YOU";
-        ctx.fillStyle = localColor;
-    } else if (playerType === "Team") {
-        ctx.fillStyle = teamColor;
-    } else if (playerType === "Enemy") {
-        ctx.fillStyle = enemyColor;
-    }
-
-    if (isScoped) {
-        displayName += " [SCOPED]";
-    }
-
-    ctx.font = `${textSize}px Arial`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "black";
-    ctx.strokeText(displayName, pos.x, textY);
-
-    ctx.fillText(displayName, pos.x, textY);
-}
-
-function getWeaponName(weaponId) {
-    if (weaponIdMap[weaponId]) {
-        return weaponIdMap[weaponId];
-    }
-
-    if (weaponId >= 500) {
-        return "KNIFE";
-    }
-
-    return "WEAPON";
-}
-
-function drawPlayerWeapon(pos, playerType, weaponId) {
-    if (!map) return;
-
-    if (zoomSet) {
-        pos = boundingCoordinates(mapCoordinates(pos), boundingRect);
-        textSize = boundingScale(10, boundingRect);
-    } else {
-        pos = mapCoordinates(pos);
-        textSize = 10;
-    }
-
-    const textY = pos.y + (drawNames ? 35 : 20);
-
-    let weaponName = getWeaponName(weaponId);
-
-    if (weaponId === 9) {
-        ctx.fillStyle = "orange";
-    } else {
-        ctx.fillStyle = textColor;
-    }
-
-    ctx.font = `${textSize}px Arial`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "black";
-    ctx.strokeText(`[${weaponName}]`, pos.x, textY);
-    ctx.fillText(`[${weaponName}]`, pos.x, textY);
+    };
 }
 
 function render() {
     if (update) {
-        fillCanvas()
+        fillCanvas();
         if (loaded) {
-            update = false
+            update = false;
 
-            // Iterate through the array and update the min/max values
-            if (entityData != null && map != null && image != null && shouldZoom) {
+            localPlayerPos = null;
+            if (entityData != null) {
+                entityData.forEach((data) => {
+                    if (data.Player !== undefined && data.Player.playerType === "Local") {
+                        localYaw = data.Player.yaw;
+                        localPlayerPos = data.Player.pos;
+                    }
+                });
+            }
 
-                let minX = Infinity
-                let minY = Infinity
-                let maxX = -Infinity
-                let maxY = -Infinity
+            if (entityData != null && map != null && image != null && shouldZoom && !playerCentered) {
+                let minX = Infinity;
+                let minY = Infinity;
+                let maxX = -Infinity;
+                let maxY = -Infinity;
 
                 entityData.forEach((data) => {
-                    let mapCords = null
+                    let mapCords = null;
 
                     if (data.Bomb !== undefined) {
-                        mapCords = mapCoordinates(data.Bomb.pos)
+                        mapCords = mapCoordinates(data.Bomb.pos);
                     } else {
-                        mapCords = mapCoordinates(data.Player.pos)
+                        mapCords = mapCoordinates(data.Player.pos);
                     }
 
                     minX = Math.min(minX, mapCords.x);
@@ -295,29 +210,28 @@ function render() {
                     maxY = Math.max(maxY, mapCords.y);
                 });
 
-                boundingRect = makeBoundingRect(minX - safetyBound, minY - safetyBound, maxX + safetyBound, maxY + safetyBound, image.width / image.height)
-
-                zoomSet = true
-            } else if (zoomSet) {
-                zoomSet = false
+                boundingRect = makeBoundingRect(minX - safetyBound, minY - safetyBound, maxX + safetyBound, maxY + safetyBound, image.width / image.height);
+                zoomSet = true;
+            } else if (zoomSet && !playerCentered) {
+                zoomSet = false;
             }
 
-            drawImage()
+            drawImage();
 
             if (entityData != null) {
                 entityData.forEach((data) => {
                     if (data.Bomb !== undefined) {
-                        drawBomb(data.Bomb.pos, data.Bomb.isPlanted)
+                        drawBomb(data.Bomb.pos, data.Bomb.isPlanted);
                     } else {
-                        let fillStyle = localColor
+                        let fillStyle = localColor;
 
                         switch (data.Player.playerType) {
                             case "Team":
-                                fillStyle = teamColor
+                                fillStyle = teamColor;
                                 break;
 
                             case "Enemy":
-                                fillStyle = enemyColor
+                                fillStyle = enemyColor;
                                 break;
                         }
 
@@ -329,7 +243,10 @@ function render() {
                             data.Player.yaw,
                             data.Player.hasAwp,
                             data.Player.playerType,
-                            data.Player.isScoped
+                            data.Player.isScoped,
+                            data.Player.playerName,
+                            false,
+                            data.Player.weaponId
                         );
 
                         if (drawNames && !data.Player.isDormant) {
@@ -363,84 +280,81 @@ function render() {
 
             if (radarData != null) {
                 if (radarData.bombPlanted && !radarData.bombExploded && radarData.bombDefuseTimeleft >= 0) {
-
                     let maxWidth = 1024 - 128 - 128;
                     let timeleft = radarData.bombDefuseTimeleft;
 
                     // Base bar
-                    ctx.fillStyle = "black"
-                    ctx.fillRect(128, 16, maxWidth, 16)
+                    ctx.fillStyle = "black";
+                    ctx.fillRect(128, 16, maxWidth, 16);
 
                     // Bomb timer
                     if (radarData.bombBeingDefused) {
                         if (radarData.bombCanDefuse) {
-                            ctx.fillStyle = teamColor
+                            ctx.fillStyle = teamColor;
                         } else {
-                            ctx.fillStyle = enemyColor
+                            ctx.fillStyle = enemyColor;
                         }
                     } else {
-                        ctx.fillStyle = bombColor
+                        ctx.fillStyle = bombColor;
                     }
 
-                    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12)
+                    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12);
 
                     ctx.font = "24px Arial";
-                    ctx.textAlign = "center"
-                    ctx.textBaseline = "middle"
-                    ctx.fillStyle = textColor
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillStyle = textColor;
                     ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, 28 + 24);
 
                     // Defuse time lines
-                    ctx.strokeStyle = "black"
-                    ctx.lineWidth = 2
+                    ctx.strokeStyle = "black";
+                    ctx.lineWidth = 2;
 
                     // Kit defuse
-                    ctx.beginPath()
-                    ctx.moveTo(128 + (maxWidth * (5 / 40)), 16)
-                    ctx.lineTo(128 + (maxWidth * (5 / 40)), 32)
-                    ctx.stroke()
+                    ctx.beginPath();
+                    ctx.moveTo(128 + (maxWidth * (5 / 40)), 16);
+                    ctx.lineTo(128 + (maxWidth * (5 / 40)), 32);
+                    ctx.stroke();
 
                     // Normal defuse
-                    ctx.beginPath()
-                    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16)
-                    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32)
-                    ctx.stroke()
+                    ctx.beginPath();
+                    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16);
+                    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32);
+                    ctx.stroke();
 
                     // Defuse stamp line
                     if (radarData.bombCanDefuse) {
-                        console.log(radarData.bombDefuseEnd)
-                        ctx.strokeStyle = "green"
-                        ctx.beginPath()
-                        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16)
-                        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32)
-                        ctx.stroke()
+                        ctx.strokeStyle = "green";
+                        ctx.beginPath();
+                        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16);
+                        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32);
+                        ctx.stroke();
                     }
                 }
             }
-
         } else {
             if (websocket != null) {
                 ctx.font = "100px Arial";
-                ctx.textAlign = "center"
-                ctx.textBaseline = "middle"
-                ctx.fillStyle = textColor
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillStyle = textColor;
                 ctx.fillText("Not on a server", 1024 / 2, 1024 / 2);
             } else {
                 ctx.font = "100px Arial";
-                ctx.textAlign = "center"
-                ctx.fillStyle = textColor
+                ctx.textAlign = "center";
+                ctx.fillStyle = textColor;
                 ctx.fillText("Disconnected", 1024 / 2, 1024 / 2);
             }
         }
 
         if (drawStats) {
             ctx.font = "16px Arial";
-            ctx.textAlign = "left"
-            ctx.fillStyle = textColor
+            ctx.textAlign = "left";
+            ctx.fillStyle = textColor;
             ctx.lineWidth = 2;
-            ctx.strokeStyle = "black"
-            ctx.strokeText(`${freq} Hz`, 2, 18)
-            ctx.fillText(`${freq} Hz`, 2, 18)
+            ctx.strokeStyle = "black";
+            ctx.strokeText(`${freq} Hz`, 2, 18);
+            ctx.fillText(`${freq} Hz`, 2, 18);
         }
     }
 
@@ -458,27 +372,214 @@ function drawImage() {
     if (image == null || canvas == null)
         return
 
-    if (zoomSet != false && boundingRect.x != null) {
+    ctx.save();
+
+    if (rotateMap) {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(degreesToRadians(localYaw + 270));
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+
+    if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+        const viewX = playerMapPos.x - (viewWidth / 2);
+        const viewY = playerMapPos.y - (viewHeight / 2);
+
+        ctx.drawImage(
+            image,
+            viewX, viewY, viewWidth, viewHeight,
+            0, 0, canvas.width, canvas.height
+        );
+    } else if (zoomSet != false && boundingRect.x != null) {
         ctx.drawImage(image, boundingRect.x, boundingRect.y, boundingRect.width, boundingRect.height, 0, 0, canvas.width, canvas.height)
     } else {
         ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, canvas.width, canvas.height)
     }
+
+    ctx.restore();
+}
+
+function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
+    if (!map) return;
+
+    let mapPos = mapCoordinates(pos);
+    let textSize;
+
+    if (zoomSet) {
+        mapPos = boundingCoordinates(mapPos, boundingRect);
+        textSize = boundingScale(12, boundingRect);
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+        textSize = 12;
+    } else {
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+        textSize = 12;
+    }
+
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+    }
+
+    const textY = mapPos.y + 20;
+
+    let displayName = playerName;
+    if (playerType === "Local") {
+        displayName = "YOU";
+        ctx.fillStyle = localColor;
+    } else if (playerType === "Team") {
+        ctx.fillStyle = teamColor;
+    } else if (playerType === "Enemy") {
+        ctx.fillStyle = enemyColor;
+    }
+
+    if (isScoped) {
+        displayName += " [SCOPED]";
+    }
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(displayName, mapPos.x, textY);
+    ctx.fillText(displayName, mapPos.x, textY);
+}
+
+function drawPlayerWeapon(pos, playerType, weaponId) {
+    if (!map) return;
+
+    let mapPos = mapCoordinates(pos);
+    let textSize;
+
+    if (zoomSet) {
+        mapPos = boundingCoordinates(mapPos, boundingRect);
+        textSize = boundingScale(10, boundingRect);
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+        textSize = 10;
+    } else {
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+        textSize = 10;
+    }
+
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+    }
+
+    const textY = mapPos.y + (drawNames ? 35 : 20);
+
+    let weaponName = getWeaponName(weaponId);
+
+    if (weaponId === 9) {
+        ctx.fillStyle = "orange";
+    } else {
+        ctx.fillStyle = textColor;
+    }
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(`[${weaponName}]`, mapPos.x, textY);
+    ctx.fillText(`[${weaponName}]`, mapPos.x, textY);
+}
+
+function drawPlayerBomb(pos, playerType) {
+    if (!map) return;
+
+    let mapPos = mapCoordinates(pos);
+    let textSize;
+
+    if (zoomSet) {
+        mapPos = boundingCoordinates(mapPos, boundingRect);
+        textSize = boundingScale(10, boundingRect);
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+        textSize = 10;
+    } else {
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+        textSize = 10;
+    }
+
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+    }
+
+    const textY = mapPos.y + (drawNames ? (drawGuns ? 50 : 35) : (drawGuns ? 35 : 20));
+
+    ctx.fillStyle = bombColor;
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText("[C4]", mapPos.x, textY);
+    ctx.fillText("[C4]", mapPos.x, textY);
 }
 
 function drawBomb(pos, planted) {
     if (map == null)
         return
 
+    let mapPos = mapCoordinates(pos);
+    let size;
+
     if (zoomSet) {
-        pos = boundingCoordinates(mapCoordinates(pos), boundingRect)
+        mapPos = boundingCoordinates(mapPos, boundingRect);
         size = boundingScale(8, boundingRect);
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+        size = 8;
     } else {
-        pos = mapCoordinates(pos)
-        size = 8
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+        size = 8;
+    }
+
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
     }
 
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, size, 0, 2 * Math.PI);
+    ctx.arc(mapPos.x, mapPos.y, size, 0, 2 * Math.PI);
     ctx.fillStyle = bombColor;
     ctx.fill();
 
@@ -490,47 +591,76 @@ function drawBomb(pos, planted) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "white";
-    ctx.fillText("C4", pos.x, pos.y);
+    ctx.fillText("C4", mapPos.x, mapPos.y);
 
     ctx.closePath();
 
     if (planted && ((new Date().getTime() / 1000) % 1) > 0.5) {
-        ctx.strokeStyle = enemyColor
+        ctx.strokeStyle = enemyColor;
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, size + 4, 0, 2 * Math.PI);
+        ctx.arc(mapPos.x, mapPos.y, size + 4, 0, 2 * Math.PI);
         ctx.stroke();
     }
 }
 
-function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, isScoped, playerName) {
+function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, isScoped, playerName, isPlanted, weaponId) {
     if (map == null)
         return
 
+    let mapPos = mapCoordinates(pos);
+    let circleRadius, distance, radius, arrowWidth;
+
     if (zoomSet) {
-        pos = boundingCoordinates(mapCoordinates(pos), boundingRect)
+        mapPos = boundingCoordinates(mapPos, boundingRect);
         circleRadius = boundingScale(7, boundingRect);
         distance = circleRadius + boundingScale(2, boundingRect);
-        radius = distance + boundingScale(2, boundingRect)
-        arrowWidth = 35
+        radius = distance + boundingScale(2, boundingRect);
+        arrowWidth = 35;
+    } else if (playerCentered && localPlayerPos) {
+        const playerMapPos = mapCoordinates(localPlayerPos);
+        const zoomLevel = 0.5;
+        const viewWidth = image.width * zoomLevel;
+        const viewHeight = image.height * zoomLevel;
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
+
+        circleRadius = 7;
+        distance = circleRadius + 2;
+        radius = distance + 5;
+        arrowWidth = 35;
     } else {
-        pos = mapCoordinates(pos)
-        circleRadius = 7
-        distance = circleRadius + 2
+        mapPos.x = mapPos.x * canvas.width / image.width;
+        mapPos.y = mapPos.y * canvas.height / image.height;
+
+        circleRadius = 7;
+        distance = circleRadius + 2;
         radius = distance + 5;
         arrowWidth = 35;
     }
 
+    let adjustedYaw = yaw;
+    if (rotateMap) {
+        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+
+        if (playerType === "Local") {
+            adjustedYaw = 90;
+        } else {
+            adjustedYaw = (yaw + 180) - localYaw + 270;
+        }
+    }
+
     if (dormant) {
         ctx.font = "20px Arial";
-        ctx.textAlign = "center"
-        ctx.fillStyle = fillStyle
-        ctx.fillText("?", pos.x, pos.y);
+        ctx.textAlign = "center";
+        ctx.fillStyle = fillStyle;
+        ctx.fillText("?", mapPos.x, mapPos.y);
     } else {
-
         if (hasAwp) {
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, circleRadius, 0, 2 * Math.PI);
+            ctx.arc(mapPos.x, mapPos.y, circleRadius, 0, 2 * Math.PI);
             ctx.fillStyle = "orange";
             ctx.fill();
             circleRadius -= 2;
@@ -538,78 +668,80 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
 
         // Draw circle
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, circleRadius, 0, 2 * Math.PI);
+        ctx.arc(mapPos.x, mapPos.y, circleRadius, 0, 2 * Math.PI);
         ctx.fillStyle = fillStyle;
         ctx.fill();
 
         if (hasAwp && false) {
-
-            let style = "yellow"
+            let style = "yellow";
 
             if (playerType == "Enemy") {
-                style = "orange"
+                style = "orange";
             }
 
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, circleRadius / 1.5, 0, 2 * Math.PI);
+            ctx.arc(mapPos.x, mapPos.y, circleRadius / 1.5, 0, 2 * Math.PI);
             ctx.fillStyle = style;
             ctx.fill();
         }
 
         ctx.closePath();
 
-        // Calculate arrowhead points
+        const arrowHeadX = mapPos.x + radius * Math.cos(adjustedYaw * (Math.PI / 180));
+        const arrowHeadY = mapPos.y - radius * Math.sin(adjustedYaw * (Math.PI / 180));
 
+        const arrowCornerX1 = mapPos.x + distance * Math.cos((adjustedYaw - arrowWidth) * (Math.PI / 180));
+        const arrowCornerY1 = mapPos.y - distance * Math.sin((adjustedYaw - arrowWidth) * (Math.PI / 180));
 
-        const arrowHeadX = pos.x + radius * Math.cos(yaw * (Math.PI / 180))
-        const arrowHeadY = pos.y - radius * Math.sin(yaw * (Math.PI / 180))
+        const arrowCornerX2 = mapPos.x + distance * Math.cos((adjustedYaw + arrowWidth) * (Math.PI / 180));
+        const arrowCornerY2 = mapPos.y - distance * Math.sin((adjustedYaw + arrowWidth) * (Math.PI / 180));
 
-        const arrowCornerX1 = pos.x + distance * Math.cos((yaw - arrowWidth) * (Math.PI / 180))
-        const arrowCornerY1 = pos.y - distance * Math.sin((yaw - arrowWidth) * (Math.PI / 180))
-
-        const arrowCornerX2 = pos.x + distance * Math.cos((yaw + arrowWidth) * (Math.PI / 180))
-        const arrowCornerY2 = pos.y - distance * Math.sin((yaw + arrowWidth) * (Math.PI / 180))
-
-
-        const cicleYaw = 90 - yaw
-        const startAngle = degreesToRadians(cicleYaw - arrowWidth) - Math.PI / 2
-        const endAngle = degreesToRadians(cicleYaw + arrowWidth) - Math.PI / 2
+        const cicleYaw = 90 - adjustedYaw;
+        const startAngle = degreesToRadians(cicleYaw - arrowWidth) - Math.PI / 2;
+        const endAngle = degreesToRadians(cicleYaw + arrowWidth) - Math.PI / 2;
 
         // Draw arrow
-
-        /// Backside of the arrow
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, distance, startAngle, endAngle)
-
-        /// Draw from corners to arrowhead
+        ctx.arc(mapPos.x, mapPos.y, distance, startAngle, endAngle);
         ctx.lineTo(arrowCornerX1, arrowCornerY1);
         ctx.lineTo(arrowHeadX, arrowHeadY);
         ctx.lineTo(arrowCornerX2, arrowCornerY2);
-        ctx.closePath()
-
-        ctx.fillStyle = 'white'
+        ctx.closePath();
+        ctx.fillStyle = 'white';
         ctx.fill();
 
         if (isScoped) {
-            const lineOfSightX = arrowHeadX + 1024 * Math.cos(yaw * (Math.PI / 180))
-            const lineOfSightY = arrowHeadY - 1024 * Math.sin(yaw * (Math.PI / 180))
+            const lineOfSightX = arrowHeadX + 1024 * Math.cos(adjustedYaw * (Math.PI / 180));
+            const lineOfSightY = arrowHeadY - 1024 * Math.sin(adjustedYaw * (Math.PI / 180));
             ctx.beginPath();
             ctx.moveTo(arrowHeadX, arrowHeadY);
             ctx.lineTo(lineOfSightX, lineOfSightY);
 
             if (playerType == "Enemy")
-                ctx.strokeStyle = enemyColor
+                ctx.strokeStyle = enemyColor;
             else
-                ctx.strokeStyle = teamColor
+                ctx.strokeStyle = teamColor;
 
-            ctx.strokeWidth = 1;
+            ctx.lineWidth = 1;
             ctx.stroke();
         }
     }
 }
 
+function getWeaponName(weaponId) {
+    if (weaponIdMap[weaponId]) {
+        return weaponIdMap[weaponId];
+    }
+
+    if (weaponId >= 500) {
+        return "KNIFE";
+    }
+
+    return "KNIFE";
+}
+
 function loadMap(mapName) {
-    console.log(`[radarflow] loading map ${mapName}`)
+    console.log(`[radarflow] loading map ${mapName}`);
     loaded = true;
     const map_img = new Image();
     map_img.src = `assets/image/${mapName}_radar_psd.png`;
@@ -630,27 +762,27 @@ function loadMap(mapName) {
 }
 
 function unloadMap() {
-    console.log("[radarflow] unloading map")
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    map = null
-    mapName = null
+    console.log("[radarflow] unloading map");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    map = null;
+    mapName = null;
     loaded = false,
-    update = true
+    update = true;
     requestAnimationFrame(render);
 }
 
 function connect() {
     if (websocket == null) {
-        let socket = new WebSocket(websocketAddr)
+        let socket = new WebSocket(websocketAddr);
 
         socket.onopen = () => {
-            console.log("[radarflow] Connection established")
+            console.log("[radarflow] Connection established");
             websocket.send("requestInfo");
         };
 
         socket.onmessage = (event) => {
             if (event.data == "error") {
-                console.log("[radarflow] Server had an unknown error")
+                console.log("[radarflow] Server had an unknown error");
             } else {
                 try {
                     let data = JSON.parse(event.data);
@@ -662,22 +794,22 @@ function connect() {
                     }
 
                     if (data.ingame == false) {
-                        mapName = null
-                        entityData = null
+                        mapName = null;
+                        entityData = null;
 
                         if (loaded)
-                            unloadMap()
+                            unloadMap();
                     } else {
                         if (!loaded) {
-                            mapName = data.mapName
-                            entityData = data.entityData
-                            loadMap(mapName)
+                            mapName = data.mapName;
+                            entityData = data.entityData;
+                            loadMap(mapName);
                         } else {
-                            entityData = data.entityData
+                            entityData = data.entityData;
                         }
                     }
 
-                    update = true
+                    update = true;
                     requestAnimationFrame(render);
                 } catch (e) {
                     console.error("[radarflow] Error parsing server message:", e, event.data);
@@ -692,9 +824,9 @@ function connect() {
                 console.log("[radarflow] connection died");
             }
 
-            playerData = null
-            websocket = null
-            unloadMap()
+            playerData = null;
+            websocket = null;
+            unloadMap();
 
             setTimeout(function () {
                 connect();
@@ -719,31 +851,41 @@ addEventListener("DOMContentLoaded", (e) => {
     document.getElementById("namesCheck").checked = true;
     document.getElementById("gunsCheck").checked = true;
     document.getElementById("moneyReveal").checked = false;
+    document.getElementById("rotateCheck").checked = true;
+    document.getElementById("centerCheck").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;
     canvas.height = 1024;
-    canvasAspectRatio = canvas.width / canvas.height
+    canvasAspectRatio = canvas.width / canvas.height;
     ctx = canvas.getContext('2d');
 
-    console.log(`[radarflow] connecting to ${websocketAddr}`)
-    connect()
+    console.log(`[radarflow] connecting to ${websocketAddr}`);
+    connect();
 });
 
 function toggleZoom() {
-    shouldZoom = !shouldZoom
+    shouldZoom = !shouldZoom;
 }
 
 function toggleStats() {
-    drawStats = !drawStats
+    drawStats = !drawStats;
 }
 
 function toggleNames() {
-    drawNames = !drawNames
+    drawNames = !drawNames;
 }
 
 function toggleGuns() {
-    drawGuns = !drawGuns
+    drawGuns = !drawGuns;
+}
+
+function toggleRotate() {
+    rotateMap = !rotateMap;
+}
+
+function toggleCentered() {
+    playerCentered = !playerCentered;
 }
 
 function toggleMoneyReveal() {
