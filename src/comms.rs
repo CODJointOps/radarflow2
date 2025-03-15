@@ -141,15 +141,6 @@ impl RadarData {
             money_reveal_enabled: false
         }
     }
-
-    pub fn set_reveal_money(&mut self, value: bool) {
-        self.options.reveal_money = value;
-        self.money_reveal_enabled = value;
-    }
-
-    pub fn get_reveal_money(&self) -> bool {
-        self.options.reveal_money
-    }
 }
 
 unsafe impl Send for RadarData {}
