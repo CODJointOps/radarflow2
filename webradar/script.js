@@ -13,11 +13,17 @@ playerCentered = true
 drawStats = true
 drawNames = true
 drawGuns = true
-drawMoney = true;
+drawMoney = true
+
+let focusedPlayerYaw = 0;
 
 // Common
 canvas = null
 ctx = null
+
+let focusedPlayerName = "YOU"
+let focusedPlayerPos = null
+let playerList = {}
 
 // radarflow specific
 radarData = null
@@ -181,13 +187,38 @@ function render() {
             update = false;
 
             localPlayerPos = null;
+            focusedPlayerPos = null;
+            focusedPlayerYaw = 0;
+
             if (entityData != null) {
+                playerList = {};
+
                 entityData.forEach((data) => {
-                    if (data.Player !== undefined && data.Player.playerType === "Local") {
-                        localYaw = data.Player.yaw;
-                        localPlayerPos = data.Player.pos;
+                    if (data.Player !== undefined) {
+                        if (data.Player.playerType === "Local") {
+                            localYaw = data.Player.yaw;
+                            localPlayerPos = data.Player.pos;
+
+                            playerList["YOU"] = {
+                                pos: data.Player.pos,
+                                yaw: data.Player.yaw
+                            };
+                        } else {
+                            playerList[data.Player.playerName] = {
+                                pos: data.Player.pos,
+                                yaw: data.Player.yaw
+                            };
+                        }
+
+                        if (data.Player.playerName === focusedPlayerName ||
+                            (focusedPlayerName === "YOU" && data.Player.playerType === "Local")) {
+                            focusedPlayerPos = data.Player.pos;
+                            focusedPlayerYaw = data.Player.yaw;
+                        }
                     }
                 });
+
+                updatePlayerDropdown();
             }
 
             if (entityData != null && map != null && image != null && shouldZoom && !playerCentered) {
@@ -277,7 +308,6 @@ function render() {
                         }
 
                         if (drawMoney && !data.Player.isDormant && typeof data.Player.money === 'number') {
-                            console.log(`[radarflow] Drawing money for ${data.Player.playerName}: $${data.Player.money}`);
                             drawPlayerMoney(
                                 data.Player.pos,
                                 data.Player.playerType,
@@ -385,14 +415,14 @@ function drawImage() {
 
     ctx.save();
 
-    if (rotateMap) {
+    if (rotateMap && focusedPlayerPos) {
         ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate(degreesToRadians(localYaw + 270));
+        ctx.rotate(degreesToRadians(focusedPlayerYaw + 270));
         ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
-    if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
+    if (playerCentered && focusedPlayerPos) {
+        const playerMapPos = mapCoordinates(focusedPlayerPos);
         const zoomLevel = 0.5;
         const viewWidth = image.width * zoomLevel;
         const viewHeight = image.height * zoomLevel;
@@ -413,34 +443,81 @@ function drawImage() {
     ctx.restore();
 }
 
-function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
-    if (!map) return;
+function updatePlayerDropdown() {
+    const dropdown = document.getElementById('playerSelect');
+    const currentValue = dropdown.value;
 
+    while (dropdown.options.length > 1) {
+        dropdown.remove(1);
+    }
+
+    for (const playerName in playerList) {
+        if (playerName !== "YOU") {
+            const option = document.createElement('option');
+            option.value = playerName;
+            option.textContent = playerName;
+            dropdown.appendChild(option);
+        }
+    }
+
+    if (Object.keys(playerList).includes(currentValue)) {
+        dropdown.value = currentValue;
+    } else {
+        dropdown.value = "local";
+        focusedPlayerName = "YOU";
+        if (playerList["YOU"]) {
+            focusedPlayerPos = playerList["YOU"].pos;
+            focusedPlayerYaw = playerList["YOU"].yaw;
+        }
+    }
+}
+
+function changePlayerFocus() {
+    const dropdown = document.getElementById('playerSelect');
+    if (dropdown.value === "local") {
+        focusedPlayerName = "YOU";
+    } else {
+        focusedPlayerName = dropdown.value;
+    }
+    console.log(`[radarflow] Changed focus to player: ${focusedPlayerName}`);
+    update = true;
+}
+
+function mapAndTransformCoordinates(pos) {
     let mapPos = mapCoordinates(pos);
-    let textSize;
+    let textSize = 12;
 
     if (zoomSet) {
         mapPos = boundingCoordinates(mapPos, boundingRect);
         textSize = boundingScale(12, boundingRect);
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
+    } else if (playerCentered && focusedPlayerPos) {
+        const playerMapPos = mapCoordinates(focusedPlayerPos);
         const zoomLevel = 0.5;
         const viewWidth = image.width * zoomLevel;
         const viewHeight = image.height * zoomLevel;
 
         mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
         mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-        textSize = 12;
     } else {
         mapPos.x = mapPos.x * canvas.width / image.width;
         mapPos.y = mapPos.y * canvas.height / image.height;
-        textSize = 12;
     }
 
     if (rotateMap) {
         const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
+        const rotationYaw = focusedPlayerName === "YOU" ? localYaw : focusedPlayerYaw;
+        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, rotationYaw + 270);
     }
+
+    return { pos: mapPos, textSize: textSize };
+}
+
+function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
+    if (!map) return;
+
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const textSize = transformed.textSize;
 
     const textY = mapPos.y + 20;
 
@@ -471,33 +548,9 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) 
 function drawPlayerMoney(pos, playerType, money, hasBomb) {
     if (!map) return;
 
-    console.log(`[radarflow] Drawing money: $${money} for ${playerType}`);
-
-    let mapPos = mapCoordinates(pos);
-    let textSize;
-
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        textSize = boundingScale(10, boundingRect);
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-        textSize = 10;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
-        textSize = 10;
-    }
-
-    if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
-    }
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const textSize = transformed.textSize * 0.8;
 
     let extraOffset = 0;
     if (drawNames) extraOffset += 15;
@@ -529,31 +582,9 @@ function drawPlayerMoney(pos, playerType, money, hasBomb) {
 function drawPlayerWeapon(pos, playerType, weaponId) {
     if (!map) return;
 
-    let mapPos = mapCoordinates(pos);
-    let textSize;
-
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        textSize = boundingScale(10, boundingRect);
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-        textSize = 10;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
-        textSize = 10;
-    }
-
-    if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
-    }
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const textSize = transformed.textSize * 0.8;
 
     const textY = mapPos.y + (drawNames ? 35 : 20);
 
@@ -578,31 +609,9 @@ function drawPlayerWeapon(pos, playerType, weaponId) {
 function drawPlayerBomb(pos, playerType) {
     if (!map) return;
 
-    let mapPos = mapCoordinates(pos);
-    let textSize;
-
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        textSize = boundingScale(10, boundingRect);
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-        textSize = 10;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
-        textSize = 10;
-    }
-
-    if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
-    }
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const textSize = transformed.textSize * 0.8;
 
     const textY = mapPos.y + (drawNames ? (drawGuns ? 50 : 35) : (drawGuns ? 35 : 20));
 
@@ -621,31 +630,9 @@ function drawBomb(pos, planted) {
     if (map == null)
         return
 
-    let mapPos = mapCoordinates(pos);
-    let size;
-
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        size = boundingScale(8, boundingRect);
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-        size = 8;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
-        size = 8;
-    }
-
-    if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
-    }
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const size = transformed.textSize * 0.7;
 
     ctx.beginPath();
     ctx.arc(mapPos.x, mapPos.y, size, 0, 2 * Math.PI);
@@ -677,47 +664,22 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
     if (map == null)
         return
 
-    let mapPos = mapCoordinates(pos);
-    let circleRadius, distance, radius, arrowWidth;
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const circleRadius = transformed.textSize * 0.6;
+    const distance = circleRadius + 2;
+    const radius = distance + 5;
+    const arrowWidth = 35;
 
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        circleRadius = boundingScale(7, boundingRect);
-        distance = circleRadius + boundingScale(2, boundingRect);
-        radius = distance + boundingScale(2, boundingRect);
-        arrowWidth = 35;
-    } else if (playerCentered && localPlayerPos) {
-        const playerMapPos = mapCoordinates(localPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-
-        circleRadius = 7;
-        distance = circleRadius + 2;
-        radius = distance + 5;
-        arrowWidth = 35;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
-
-        circleRadius = 7;
-        distance = circleRadius + 2;
-        radius = distance + 5;
-        arrowWidth = 35;
-    }
+    const isFocusedPlayer = playerName === focusedPlayerName ||
+        (focusedPlayerName === "YOU" && playerType === "Local");
 
     let adjustedYaw = yaw;
     if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, localYaw + 270);
-
-        if (playerType === "Local") {
+        if (isFocusedPlayer) {
             adjustedYaw = 90;
         } else {
-            adjustedYaw = (yaw + 180) - localYaw + 270;
+            adjustedYaw = (yaw + 180) - focusedPlayerYaw + 270;
         }
     }
 
@@ -727,6 +689,14 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         ctx.fillStyle = fillStyle;
         ctx.fillText("?", mapPos.x, mapPos.y);
     } else {
+        if (isFocusedPlayer) {
+            ctx.beginPath();
+            ctx.arc(mapPos.x, mapPos.y, circleRadius + 4, 0, 2 * Math.PI);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fill();
+            ctx.closePath();
+        }
+
         if (hasAwp) {
             ctx.beginPath();
             ctx.arc(mapPos.x, mapPos.y, circleRadius, 0, 2 * Math.PI);
@@ -915,14 +885,17 @@ function connect() {
 }
 
 addEventListener("DOMContentLoaded", (e) => {
+    const savedDrawMoney = localStorage.getItem('drawMoney');
+    drawMoney = savedDrawMoney !== null ? savedDrawMoney === 'true' : true;
+
     document.getElementById("zoomCheck").checked = false;
     document.getElementById("statsCheck").checked = true;
     document.getElementById("namesCheck").checked = true;
     document.getElementById("gunsCheck").checked = true;
+    document.getElementById("moneyDisplay").checked = drawMoney;
     document.getElementById("moneyReveal").checked = false;
     document.getElementById("rotateCheck").checked = true;
     document.getElementById("centerCheck").checked = true;
-    document.getElementById("moneyDisplay").checked = true;
 
     canvas = document.getElementById('canvas');
     canvas.width = 1024;

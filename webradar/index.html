@@ -29,6 +29,10 @@
                     <label for="gunsCheck">Weapons</label>
                 </div>
                 <div>
+                    <input type="checkbox" onclick="toggleDisplayMoney()" id="moneyDisplay" name="money-display" checked />
+                    <label for="moneyDisplay">Display Money</label>
+                </div>
+                <div>
                     <input type="checkbox" onclick="toggleRotate()" id="rotateCheck" name="rotate" checked />
                     <label for="rotateCheck">Rotate Map</label>
                 </div>
@@ -36,9 +40,12 @@
                     <input type="checkbox" onclick="toggleCentered()" id="centerCheck" name="center" checked />
                     <label for="centerCheck">Player Centered</label>
                 </div>
-                <div>
-                    <input type="checkbox" onclick="toggleDisplayMoney()" id="moneyDisplay" name="money-display" checked />
-                    <label for="moneyDisplay">Display Money</label>
+
+                <div class="player-focus">
+                    <label for="playerSelect">Focus Player:</label>
+                    <select id="playerSelect" onchange="changePlayerFocus()">
+                        <option value="local">YOU</option>
+                    </select>
                 </div>
 
                 <button id="showDangerousBtn" onclick="toggleDangerousOptions()">Show Dangerous Options</button>
