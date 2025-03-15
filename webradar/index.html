@@ -1,47 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>radarflow</title>
-    <link href="styles.css" rel="stylesheet" type="text/css"/>
+    <link href="styles.css" rel="stylesheet" type="text/css" />
 </head>
+
 <body>
     <div id="canvasContainer">
         <div id="settingsHolder">
             <div class="settings">
                 <div>
-                    <input type="checkbox" onclick="toggleZoom()" id="zoomCheck" name="zoom"/>
+                    <input type="checkbox" onclick="toggleZoom()" id="zoomCheck" name="zoom" />
                     <label for="zoomCheck">Zoom</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleStats()" id="statsCheck" name="stats"/>
+                    <input type="checkbox" onclick="toggleStats()" id="statsCheck" name="stats" />
                     <label for="statsCheck">Stats</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleNames()" id="namesCheck" name="names"/>
+                    <input type="checkbox" onclick="toggleNames()" id="namesCheck" name="names" />
                     <label for="namesCheck">Player Names</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleGuns()" id="gunsCheck" name="guns"/>
+                    <input type="checkbox" onclick="toggleGuns()" id="gunsCheck" name="guns" />
                     <label for="gunsCheck">Weapons</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleRotate()" id="rotateCheck" name="rotate" checked/>
+                    <input type="checkbox" onclick="toggleRotate()" id="rotateCheck" name="rotate" checked />
                     <label for="rotateCheck">Rotate Map</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleCentered()" id="centerCheck" name="center" checked/>
+                    <input type="checkbox" onclick="toggleCentered()" id="centerCheck" name="center" checked />
                     <label for="centerCheck">Player Centered</label>
                 </div>
-                <div>
-                    <input type="checkbox" onclick="toggleMoneyReveal()" id="moneyReveal" name="money"/>
-                    <label for="moneyReveal">Money Reveal (DANGEROUS!)</label>
+
+                <button id="showDangerousBtn" onclick="toggleDangerousOptions()">Show Dangerous Options</button>
+
+                <div class="dangerous-options" id="dangerousOptions">
+                    <div>
+                        <input type="checkbox" onclick="toggleMoneyReveal()" id="moneyReveal" name="money" />
+                        <label for="moneyReveal">Money Reveal (Write Memory)</label>
+                    </div>
                 </div>
             </div>
         </div>
         <canvas id="canvas"></canvas>
     </div>
     <script src="script.js"></script>
+
+    <script>
+        function toggleDangerousOptions() {
+            const dangerousSection = document.getElementById('dangerousOptions');
+            const button = document.getElementById('showDangerousBtn');
+
+            if (dangerousSection.classList.contains('revealed')) {
+                dangerousSection.classList.remove('revealed');
+                button.textContent = 'Show Dangerous Options';
+            } else {
+                dangerousSection.classList.add('revealed');
+                button.textContent = 'Hide Dangerous Options';
+            }
+        }
+    </script>
 </body>
+
 </html>

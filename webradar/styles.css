@@ -1,11 +1,11 @@
-body {    
+body {
     margin: 0;
     overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background-color: #000000; /* Change the background color as needed */
+    background-color: #000000;
     background-image: url('assets/image/background.png');
     background-repeat: repeat;
     background-size: 128px 128px;
@@ -39,7 +39,7 @@ canvas {
 #settingsHolder .settings {
     display: flex;
     flex-direction: column;
-    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: white;
     visibility: visible;
     opacity: 0.8;
@@ -56,22 +56,51 @@ canvas {
 .settings {
     display: flex;
     flex-direction: column;
-    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: white;
     visibility: visible;
     opacity: 0;
     padding: 10px;
-    background-color: rgba(25, 25, 25, 0.7); /* Semi-transparent white background */
-    transition: opacity 0.3s ease; /* Smooth transition */
+    background-color: rgba(25, 25, 25, 0.7);
+    transition: opacity 0.3s ease;
 }
 
-@media (max-width: 600px), (max-height: 600px) {
+.dangerous-options {
+    display: none;
+    border-top: 1px solid rgba(255, 0, 0, 0.5);
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+.dangerous-options.revealed {
+    display: block;
+}
+
+#showDangerousBtn {
+    background-color: #6b0000;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    margin-top: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    transition: background-color 0.3s;
+}
+
+#showDangerousBtn:hover {
+    background-color: #8a0000;
+}
+
+@media (max-width: 600px),
+(max-height: 600px) {
     #settingsHolder {
         display: none;
     }
 }
 
-@media (max-width: 400px), (max-height: 400px) {
+@media (max-width: 400px),
+(max-height: 400px) {
     #canvasContainer::before {
         content: 'settings';
         position: fixed;
