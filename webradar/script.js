@@ -17,6 +17,18 @@ let drawNames = true;
 let drawGuns = true;
 let drawMoney = true;
 
+const NETWORK_SETTINGS = {
+    useInterpolation: true,
+    interpolationAmount: 0.6,
+    pingInterval: 3000
+};
+
+let connectionHealthy = true;
+let lastResponseTime = 0;
+let requestTimeoutTimer = null;
+let reconnecting = false;
+let retryCount = 0;
+
 let isRequestPending = false;
 let frameCounter = 0;
 let fpsStartTime = 0;
@@ -25,6 +37,10 @@ let currentFps = 0;
 let temporarilyDisableRotation = false;
 let rotationDisabledUntilRespawn = false;
 let lastKnownPositions = {};
+let entityInterpolationData = {};
+let lastUpdateTime = 0;
+let networkLatencyHistory = [];
+let lastPingSent = 0;
 
 let focusedPlayerYaw = 0;
 let focusedPlayerName = "YOU";
@@ -73,6 +89,29 @@ const websocketAddr = location.protocol === 'https:'
 // Util functions
 const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
 const degreesToRadians = (degrees) => degrees * (Math.PI / 180);
+const lerp = (start, end, t) => start * (1 - t) + end * t;
+
+function lerpPosition(pos1, pos2, t) {
+    if (!pos1 || !pos2) return pos2 || pos1 || null;
+    return {
+        x: lerp(pos1.x, pos2.x, t),
+        y: lerp(pos1.y, pos2.y, t),
+        z: lerp(pos1.z, pos2.z, t)
+    };
+}
+
+function lerpAngle(a, b, t) {
+    while (a > 360) a -= 360;
+    while (a < 0) a += 360;
+    while (b > 360) b -= 360;
+    while (b < 0) b += 360;
+
+    let diff = b - a;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+
+    return a + diff * t;
+}
 
 const pingTracker = {
     history: [],
@@ -103,6 +142,74 @@ const pingTracker = {
     }
 };
 
+function updateEntityInterpolation(entityId, newData) {
+    const now = performance.now();
+
+    if (!entityInterpolationData[entityId]) {
+        entityInterpolationData[entityId] = {
+            current: JSON.parse(JSON.stringify(newData)),
+            target: JSON.parse(JSON.stringify(newData)),
+            lastUpdateTime: now
+        };
+        return entityInterpolationData[entityId].current;
+    }
+
+    entityInterpolationData[entityId].current = JSON.parse(JSON.stringify(entityInterpolationData[entityId].target));
+    entityInterpolationData[entityId].target = JSON.parse(JSON.stringify(newData));
+    entityInterpolationData[entityId].lastUpdateTime = now;
+
+    return entityInterpolationData[entityId].current;
+}
+
+function getInterpolatedEntityData(entityId) {
+    if (!NETWORK_SETTINGS.useInterpolation || !entityInterpolationData[entityId]) {
+        return null;
+    }
+
+    const data = entityInterpolationData[entityId];
+    const now = performance.now();
+    const elapsed = now - data.lastUpdateTime;
+
+    const pingTime = pingTracker.getAveragePing();
+    const targetDuration = Math.min(200, Math.max(50, pingTime * 0.8));
+    const t = Math.min(1, elapsed / targetDuration);
+    const easedT = t * (2 - t);
+
+    const result = JSON.parse(JSON.stringify(data.current));
+
+    if (result.Player) {
+        if (data.current.Player && data.target.Player) {
+            if (data.current.Player.pos && data.target.Player.pos) {
+                result.Player.pos = lerpPosition(
+                    data.current.Player.pos,
+                    data.target.Player.pos,
+                    easedT * NETWORK_SETTINGS.interpolationAmount
+                );
+            }
+
+            if (data.current.Player.yaw !== undefined && data.target.Player.yaw !== undefined) {
+                result.Player.yaw = lerpAngle(
+                    data.current.Player.yaw,
+                    data.target.Player.yaw,
+                    easedT * NETWORK_SETTINGS.interpolationAmount
+                );
+            }
+        }
+    } else if (result.Bomb) {
+        if (data.current.Bomb && data.target.Bomb) {
+            if (data.current.Bomb.pos && data.target.Bomb.pos) {
+                result.Bomb.pos = lerpPosition(
+                    data.current.Bomb.pos,
+                    data.target.Bomb.pos,
+                    easedT * NETWORK_SETTINGS.interpolationAmount
+                );
+            }
+        }
+    }
+
+    return result;
+}
+
 function render() {
     requestAnimationFrame(render);
 
@@ -123,6 +230,37 @@ function render() {
     }
 
     renderFrame();
+}
+function sendRequest() {
+    isRequestPending = true;
+    pingTracker.startRequest();
+
+    clearTimeout(requestTimeoutTimer);
+    requestTimeoutTimer = setTimeout(() => {
+        if (isRequestPending) {
+            console.warn("[radarflow] Request timeout, retrying...");
+            isRequestPending = false;
+
+            if (retryCount < NETWORK_SETTINGS.maxRetries) {
+                retryCount++;
+                sendRequest();
+            } else {
+                retryCount = 0;
+                console.error("[radarflow] Maximum retries reached, reconnecting...");
+                reconnecting = true;
+                if (websocket) {
+                    try {
+                        websocket.close();
+                    } catch (e) {
+                    }
+                    websocket = null;
+                }
+                setTimeout(connect, NETWORK_SETTINGS.reconnectDelay);
+            }
+        }
+    }, NETWORK_SETTINGS.requestTimeout);
+
+    websocket.send("requestInfo");
 }
 
 function renderFrame() {
@@ -170,9 +308,14 @@ function processPlayerPositions() {
     let oldPlayerList = { ...playerList };
     playerList = {};
 
-    entityData.forEach(data => {
+    entityData.forEach((data, index) => {
+        const entityId = `entity_${index}`;
+
         if (data.Player) {
             const player = data.Player;
+            if (NETWORK_SETTINGS.useInterpolation) {
+                updateEntityInterpolation(entityId, data);
+            }
 
             if (player.playerType === "Local") {
                 localYaw = player.yaw;
@@ -211,8 +354,6 @@ function processPlayerPositions() {
             rotationDisabledUntilRespawn = true;
         }
     }
-
-    console.log(`[radarflow] Focused player: ${focusedPlayerName}, Position: ${focusedPlayerPos ? 'Found' : 'Not found'}, Rotation disabled: ${temporarilyDisableRotation || rotationDisabledUntilRespawn}`);
 }
 
 function drawImage() {
@@ -314,11 +455,50 @@ function drawPlayerHealth(pos, playerType, health, hasBomb) {
 function drawEntities() {
     if (!entityData) return;
 
-    entityData.forEach(entity => {
-        if (entity.Bomb) {
-            drawBomb(entity.Bomb.pos, entity.Bomb.isPlanted);
-        } else if (entity.Player) {
-            const player = entity.Player;
+    const clipRect = {
+        x: -50,
+        y: -50,
+        width: canvas.width + 100,
+        height: canvas.height + 100
+    };
+
+    entityData.forEach((entity, index) => {
+        const entityId = `entity_${index}`;
+        let interpolatedEntity = null;
+
+        if (NETWORK_SETTINGS.useInterpolation) {
+            interpolatedEntity = getInterpolatedEntityData(entityId);
+        }
+
+        const renderEntity = interpolatedEntity || entity;
+
+        if (!renderEntity) return;
+
+        let pos;
+        if (renderEntity.Bomb) {
+            pos = renderEntity.Bomb.pos;
+        } else if (renderEntity.Player) {
+            pos = renderEntity.Player.pos;
+        } else {
+            return;
+        }
+
+        if (!pos) return;
+
+        const transformed = mapAndTransformCoordinates(pos);
+        const mapPos = transformed.pos;
+
+        const isVisible = mapPos.x >= clipRect.x &&
+            mapPos.x <= clipRect.x + clipRect.width &&
+            mapPos.y >= clipRect.y &&
+            mapPos.y <= clipRect.y + clipRect.height;
+
+        if (!isVisible) return;
+
+        if (renderEntity.Bomb) {
+            drawBomb(renderEntity.Bomb.pos, renderEntity.Bomb.isPlanted);
+        } else if (renderEntity.Player) {
+            const player = renderEntity.Player;
             let fillStyle = localColor;
 
             switch (player.playerType) {
@@ -715,7 +895,7 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
-    const circleRadius = transformed.textSize * 0.6;
+    let circleRadius = transformed.textSize * 0.6;
     const distance = circleRadius + 2;
     const radius = distance + 5;
     const arrowWidth = 35;
@@ -864,6 +1044,12 @@ function unloadMap() {
 function processData(data) {
     if (!data) return;
 
+    const now = performance.now();
+    lastUpdateTime = now;
+    lastResponseTime = now;
+    connectionHealthy = true;
+    isRequestPending = false;
+
     radarData = data;
     freq = data.freq;
     entityData = data.entityData;
@@ -888,6 +1074,17 @@ function processData(data) {
 function decompressData(data) {
     try {
         pingTracker.endRequest();
+
+        clearTimeout(requestTimeoutTimer);
+        lastResponseTime = performance.now();
+        connectionHealthy = true;
+        retryCount = 0;
+
+        const rtt = pingTracker.getAveragePing();
+        networkLatencyHistory.push(rtt);
+        if (networkLatencyHistory.length > 10) {
+            networkLatencyHistory.shift();
+        }
 
         if (data[0] === 0x01) {
             try {
@@ -917,37 +1114,53 @@ function decompressData(data) {
         }
     } catch (e) {
         console.error("[radarflow] Data processing error:", e);
+        isRequestPending = false;
         return null;
     }
 }
 
 function connect() {
+    reconnecting = true;
+
     if (websocket == null) {
         console.log(`[radarflow] Connecting to ${websocketAddr}`);
 
         let socket = new WebSocket(websocketAddr);
+        socket.binaryType = "arraybuffer";
 
         socket.onopen = () => {
             console.log("[radarflow] Connection established");
-            requestAnimationFrame(render);
+            lastResponseTime = performance.now();
+            connectionHealthy = true;
+            reconnecting = false;
+            isRequestPending = false;
+            retryCount = 0;
+
+            setTimeout(() => {
+                socket.send(`ping:0`);
+            }, 500);
+
+            if (!fpsStartTime) {
+                requestAnimationFrame(render);
+            }
         };
 
         socket.onmessage = (event) => {
-            isRequestPending = false;
-
-            if (event.data === "error") {
-                console.error("[radarflow] Server error");
+            if (event.data === "pong") {
+                lastResponseTime = performance.now();
                 return;
             }
 
-            if (event.data instanceof Blob) {
-                event.data.arrayBuffer().then(buffer => {
-                    const data = new Uint8Array(buffer);
-                    const jsonData = decompressData(data);
-                    if (jsonData) processData(jsonData);
-                }).catch(err => {
-                    console.error("[radarflow] Buffer processing error:", err);
-                });
+            if (event.data === "error") {
+                console.error("[radarflow] Server error");
+                isRequestPending = false;
+                return;
+            }
+
+            if (event.data instanceof ArrayBuffer) {
+                const data = new Uint8Array(event.data);
+                const jsonData = decompressData(data);
+                if (jsonData) processData(jsonData);
             } else if (typeof event.data === 'string') {
                 try {
                     const jsonData = JSON.parse(event.data);
@@ -956,6 +1169,8 @@ function connect() {
                     } else {
                         processData(jsonData);
                     }
+
+                    lastResponseTime = performance.now();
                 } catch (e) {
                     console.error("[radarflow] JSON parse error:", e);
                 }
@@ -965,8 +1180,12 @@ function connect() {
         socket.onclose = (event) => {
             console.log("[radarflow] Connection closed");
             websocket = null;
-            unloadMap();
-            setTimeout(connect, 1000);
+
+            if (!reconnecting) {
+                unloadMap();
+            }
+
+            setTimeout(connect, NETWORK_SETTINGS.reconnectDelay);
         };
 
         socket.onerror = (error) => {
@@ -974,6 +1193,8 @@ function connect() {
         };
 
         websocket = socket;
+    } else {
+        reconnecting = false;
     }
 }
 
@@ -1023,17 +1244,21 @@ function togglePerformanceMode() {
         drawMoney = false;
         drawHealth = false;
 
+        NETWORK_SETTINGS.interpolationAmount = 0.85;
+
         document.getElementById("namesCheck").checked = false;
         document.getElementById("gunsCheck").checked = false;
         document.getElementById("moneyDisplay").checked = false;
         document.getElementById("healthCheck").checked = false;
 
-        console.log("[radarflow] Performance mode enabled");
+        console.log("[radarflow] Performance mode enabled with enhanced smoothing");
     } else {
         drawNames = document.getElementById("namesCheck").checked = true;
         drawGuns = document.getElementById("gunsCheck").checked = true;
         drawMoney = document.getElementById("moneyDisplay").checked = true;
         drawHealth = document.getElementById("healthCheck").checked = true;
+
+        NETWORK_SETTINGS.interpolationAmount = 0.7;
 
         console.log("[radarflow] Performance mode disabled");
     }
