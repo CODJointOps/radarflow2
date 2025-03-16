@@ -418,20 +418,6 @@ function changePlayerFocus() {
     update = true;
 }
 
-function addRotationHelpText() {
-    const settingsHolder = document.querySelector('#settingsHolder .settings');
-    if (!settingsHolder) return;
-
-    const helpText = document.createElement('div');
-    helpText.className = 'help-text';
-    helpText.style.marginTop = '10px';
-    helpText.style.fontSize = '12px';
-    helpText.style.color = '#aaa';
-    helpText.innerHTML = 'Press <strong>R</strong> key to toggle rotation temporarily';
-
-    settingsHolder.appendChild(helpText);
-}
-
 function mapCoordinates(coordinates) {
     if (!map || !coordinates) {
         return { x: 0, y: 0 };
@@ -1019,5 +1005,4 @@ addEventListener("DOMContentLoaded", () => {
     } else {
         console.error("[radarflow] Canvas element not found");
     }
-    addRotationHelpText();
 });
