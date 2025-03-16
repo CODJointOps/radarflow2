@@ -20,6 +20,10 @@ let frameCounter = 0;
 let fpsStartTime = 0;
 let currentFps = 0;
 
+let temporarilyDisableRotation = false;
+let rotationDisabledUntilRespawn = false;
+let lastKnownPositions = {};
+
 let focusedPlayerYaw = 0;
 let focusedPlayerName = "YOU";
 let focusedPlayerPos = null;
@@ -147,7 +151,11 @@ function renderFrame() {
         ctx.font = "16px Arial";
         ctx.textAlign = "left";
         ctx.fillStyle = "#00FF00";
-        ctx.fillText(`${currentFps} FPS | ${freq} Hz | Ping: ${Math.round(pingTracker.getAveragePing())}ms`, 10, 20);
+        let rotationStatus = "Active";
+        if (temporarilyDisableRotation) rotationStatus = "Manually Disabled";
+        else if (rotationDisabledUntilRespawn) rotationStatus = "Disabled (Death)";
+
+        ctx.fillText(`${currentFps} FPS | ${freq} Hz | Ping: ${Math.round(pingTracker.getAveragePing())}ms | Rotation: ${rotationStatus}`, 10, 20);
     }
 }
 
@@ -157,6 +165,7 @@ function processPlayerPositions() {
     localPlayerPos = null;
     focusedPlayerPos = null;
     focusedPlayerYaw = 0;
+    let oldPlayerList = { ...playerList };
     playerList = {};
 
     entityData.forEach(data => {
@@ -170,20 +179,38 @@ function processPlayerPositions() {
                     pos: player.pos,
                     yaw: player.yaw
                 };
+
+                lastKnownPositions["YOU"] = player.pos;
             } else {
                 playerList[player.playerName] = {
                     pos: player.pos,
                     yaw: player.yaw
                 };
+
+                lastKnownPositions[player.playerName] = player.pos;
             }
 
             if (player.playerName === focusedPlayerName ||
                 (focusedPlayerName === "YOU" && player.playerType === "Local")) {
                 focusedPlayerPos = player.pos;
                 focusedPlayerYaw = player.yaw;
+
+                if (rotationDisabledUntilRespawn) {
+                    console.log("[radarflow] Player respawned, re-enabling rotation");
+                    rotationDisabledUntilRespawn = false;
+                }
             }
         }
     });
+
+    if (focusedPlayerPos === null) {
+        if (oldPlayerList[focusedPlayerName] && oldPlayerList[focusedPlayerName].pos) {
+            console.log("[radarflow] Focused player disappeared, disabling rotation until respawn");
+            rotationDisabledUntilRespawn = true;
+        }
+    }
+
+    console.log(`[radarflow] Focused player: ${focusedPlayerName}, Position: ${focusedPlayerPos ? 'Found' : 'Not found'}, Rotation disabled: ${temporarilyDisableRotation || rotationDisabledUntilRespawn}`);
 }
 
 function drawImage() {
@@ -191,7 +218,12 @@ function drawImage() {
 
     ctx.save();
 
-    if (rotateMap && focusedPlayerPos) {
+    const shouldRotate = rotateMap &&
+        focusedPlayerPos &&
+        !temporarilyDisableRotation &&
+        !rotationDisabledUntilRespawn;
+
+    if (shouldRotate) {
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate(degreesToRadians(focusedPlayerYaw + 270));
         ctx.translate(-canvas.width / 2, -canvas.height / 2);
@@ -382,7 +414,22 @@ function updatePlayerDropdown() {
 function changePlayerFocus() {
     const dropdown = document.getElementById('playerSelect');
     focusedPlayerName = dropdown.value === "local" ? "YOU" : dropdown.value;
+    rotationDisabledUntilRespawn = false;
     update = true;
+}
+
+function addRotationHelpText() {
+    const settingsHolder = document.querySelector('#settingsHolder .settings');
+    if (!settingsHolder) return;
+
+    const helpText = document.createElement('div');
+    helpText.className = 'help-text';
+    helpText.style.marginTop = '10px';
+    helpText.style.fontSize = '12px';
+    helpText.style.color = '#aaa';
+    helpText.innerHTML = 'Press <strong>R</strong> key to toggle rotation temporarily';
+
+    settingsHolder.appendChild(helpText);
 }
 
 function mapCoordinates(coordinates) {
@@ -445,7 +492,12 @@ function mapAndTransformCoordinates(pos) {
         mapPos.y = mapPos.y * canvasHeight / imageHeight;
     }
 
-    if (rotateMap && typeof focusedPlayerYaw === 'number') {
+    const shouldRotate = rotateMap &&
+        typeof focusedPlayerYaw === 'number' &&
+        !temporarilyDisableRotation &&
+        !rotationDisabledUntilRespawn;
+
+    if (shouldRotate) {
         const canvasCenter = { x: canvasWidth / 2, y: canvasHeight / 2 };
         const rotationYaw = focusedPlayerName === "YOU" ? localYaw : focusedPlayerYaw;
         const angle = rotationYaw + 270;
@@ -625,7 +677,12 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         (focusedPlayerName === "YOU" && playerType === "Local");
 
     let adjustedYaw = yaw;
-    if (rotateMap) {
+
+    const shouldAdjustRotation = rotateMap &&
+        !temporarilyDisableRotation &&
+        !rotationDisabledUntilRespawn;
+
+    if (shouldAdjustRotation) {
         if (isFocusedPlayer) {
             adjustedYaw = 90;
         } else {
@@ -962,4 +1019,5 @@ addEventListener("DOMContentLoaded", () => {
     } else {
         console.error("[radarflow] Canvas element not found");
     }
+    addRotationHelpText();
 });
