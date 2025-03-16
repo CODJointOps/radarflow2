@@ -40,6 +40,10 @@
                     <label for="moneyDisplay">Display Money</label>
                 </div>
                 <div>
+                    <input type="checkbox" onclick="toggleHealth()" id="healthCheck" name="health" checked />
+                    <label for="healthCheck">Display Health</label>
+                </div>
+                <div>
                     <input type="checkbox" onclick="toggleRotate()" id="rotateCheck" name="rotate" checked />
                     <label for="rotateCheck">Rotate Map</label>
                 </div>
@@ -47,7 +51,6 @@
                     <input type="checkbox" onclick="toggleCentered()" id="centerCheck" name="center" checked />
                     <label for="centerCheck">Player Centered</label>
                 </div>
-
                 <div class="player-focus">
                     <label for="playerSelect">Focus Player:</label>
                     <select id="playerSelect" onchange="changePlayerFocus()">

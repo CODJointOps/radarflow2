@@ -117,8 +117,6 @@ impl DmaCtx {
         if money_services_ptr != 0 {
             let money_addr: Address = money_services_ptr.into();
             money = self.process.read(money_addr + cs2dumper::client::CCSPlayerController_InGameMoneyServices::m_iAccount)?;
-
-            log::debug!("Read money value: {} for player", money);
         }
 
         let player_name = if player_name_ptr != 0 {

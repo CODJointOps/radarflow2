@@ -10,6 +10,8 @@ let shouldZoom = false;
 let rotateMap = true;
 let playerCentered = true;
 
+let drawHealth = true;
+
 let drawStats = true;
 let drawNames = true;
 let drawGuns = true;
@@ -259,6 +261,56 @@ function drawImage() {
     ctx.restore();
 }
 
+function toggleHealth() {
+    drawHealth = !drawHealth;
+    update = true;
+    localStorage.setItem('drawHealth', drawHealth ? 'true' : 'false');
+}
+
+function drawPlayerHealth(pos, playerType, health, hasBomb) {
+    if (!map) return;
+
+    const transformed = mapAndTransformCoordinates(pos);
+    const mapPos = transformed.pos;
+    const textSize = transformed.textSize * 0.8;
+
+    let extraOffset = 0;
+    if (drawNames) extraOffset += 15;
+    if (drawGuns) extraOffset += 15;
+    if (hasBomb) extraOffset += 15;
+    if (drawMoney) extraOffset += 15;
+
+    let textY = mapPos.y + 20 + extraOffset;
+
+    let healthColor;
+    if (health > 70) {
+        healthColor = "#32CD32";
+    } else if (health > 30) {
+        healthColor = "#FFFF00";
+    } else {
+        healthColor = "#FF0000";
+    }
+
+    const barWidth = 40;
+    const barHeight = 5;
+    ctx.fillStyle = "#444444";
+    ctx.fillRect(mapPos.x - barWidth / 2, textY, barWidth, barHeight);
+
+    ctx.fillStyle = healthColor;
+    const healthWidth = (health / 100) * barWidth;
+    ctx.fillRect(mapPos.x - barWidth / 2, textY, healthWidth, barHeight);
+
+    ctx.font = `${textSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(`${health}HP`, mapPos.x, textY + barHeight + 1);
+    ctx.fillStyle = healthColor;
+    ctx.fillText(`${health}HP`, mapPos.x, textY + barHeight + 1);
+}
+
 function drawEntities() {
     if (!entityData) return;
 
@@ -320,6 +372,15 @@ function drawEntities() {
                         player.pos,
                         player.playerType,
                         player.money,
+                        player.hasBomb
+                    );
+                }
+
+                if (drawHealth && typeof player.health === 'number') {
+                    drawPlayerHealth(
+                        player.pos,
+                        player.playerType,
+                        player.health,
                         player.hasBomb
                     );
                 }
@@ -960,22 +1021,27 @@ function togglePerformanceMode() {
         drawNames = false;
         drawGuns = false;
         drawMoney = false;
+        drawHealth = false;
 
         document.getElementById("namesCheck").checked = false;
         document.getElementById("gunsCheck").checked = false;
         document.getElementById("moneyDisplay").checked = false;
+        document.getElementById("healthCheck").checked = false;
 
         console.log("[radarflow] Performance mode enabled");
     } else {
         drawNames = document.getElementById("namesCheck").checked = true;
         drawGuns = document.getElementById("gunsCheck").checked = true;
         drawMoney = document.getElementById("moneyDisplay").checked = true;
+        drawHealth = document.getElementById("healthCheck").checked = true;
 
         console.log("[radarflow] Performance mode disabled");
     }
 }
 
 addEventListener("DOMContentLoaded", () => {
+    const savedDrawHealth = localStorage.getItem('drawHealth');
+    drawHealth = savedDrawHealth !== null ? savedDrawHealth === 'true' : true;
     const savedDrawMoney = localStorage.getItem('drawMoney');
     drawMoney = savedDrawMoney !== null ? savedDrawMoney === 'true' : true;
 
