@@ -38,6 +38,8 @@ local-ip-address = "0.6.3"
 # other
 itertools = "0.13.0"
 
+flate2 = "1.0"
+rand = "0.8"
 
 [build-dependencies]
 reqwest = { version = "0.12.9", features = ["blocking"] }

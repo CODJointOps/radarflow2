@@ -1,12 +1,12 @@
 use std::{sync::Arc, path::PathBuf};
-
 use axum::{
     extract::{ws::{WebSocketUpgrade, WebSocket, Message}, State},
     response::Response,
     routing::get,
     Router,
 };
-
+use flate2::{write::GzEncoder, Compression};
+use std::io::Write;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 
@@ -23,25 +23,37 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Resp
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
+    let mut compression_buffer: Vec<u8> = Vec::with_capacity(65536);
+
     while let Some(msg) = socket.recv().await {
         if let Ok(msg) = msg {
             if let Ok(text) = msg.to_text() {
                 if text == "requestInfo" {
-                    let str = {
-                        let data = state.data_lock.read().await;
+                    let radar_data = state.data_lock.read().await;
 
-                        match serde_json::to_string(&*data) {
-                            Ok(json) => json,
-                            Err(e) => {
-                                log::error!("Could not serialize data into json: {}", e.to_string());
-                                log::error!("Sending \"error\" instead");
-                                "error".to_string()
-                            },
+                    if let Ok(json) = serde_json::to_string(&*radar_data) {
+                        compression_buffer.clear();
+
+                        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+                        if encoder.write_all(json.as_bytes()).is_ok() {
+                            match encoder.finish() {
+                                Ok(compressed) => {
+                                    let mut message = vec![0x01];
+                                    message.extend_from_slice(&compressed);
+
+                                    let _ = socket.send(Message::Binary(message)).await;
+                                },
+                                Err(_) => {
+                                    let mut uncompressed = vec![0x00];
+                                    uncompressed.extend_from_slice(json.as_bytes());
+                                    let _ = socket.send(Message::Binary(uncompressed)).await;
+                                }
+                            }
+                        } else {
+                            let mut uncompressed = vec![0x00];
+                            uncompressed.extend_from_slice(json.as_bytes());
+                            let _ = socket.send(Message::Binary(uncompressed)).await;
                         }
-                    };
-
-                    if socket.send(Message::Text(str)).await.is_err() {
-                        return;
                     }
                 } else if text == "toggleMoneyReveal" {
                     let new_value = {
@@ -56,13 +68,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                         "enabled": new_value
                     });
 
-                    if socket.send(Message::Text(response.to_string())).await.is_err() {
-                        return;
-                    }
+                    let _ = socket.send(Message::Text(response.to_string())).await;
                 }
             }
         } else {
-            return;
+            break;
         }
     }
 }
@@ -74,6 +84,7 @@ pub async fn run(path: PathBuf, port: u16, data_lock: Arc<RwLock<RadarData>>) ->
         .with_state(AppState { data_lock });
 
     let address = format!("0.0.0.0:{}", port);
+    log::info!("Starting WebSocket server on {}", address);
     let listener = tokio::net::TcpListener::bind(address).await?;
     axum::serve(listener, app.into_make_service())
         .await?;

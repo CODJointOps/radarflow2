@@ -6,412 +6,158 @@ const bombColor = "#eda338"
 const textColor = "#d1d1d1"
 
 // Settings
-shouldZoom = false
-rotateMap = true
-playerCentered = true
+let shouldZoom = false;
+let rotateMap = true;
+let playerCentered = true;
 
-drawStats = true
-drawNames = true
-drawGuns = true
-drawMoney = true
+let drawStats = true;
+let drawNames = true;
+let drawGuns = true;
+let drawMoney = true;
+
+let isRequestPending = false;
+let frameCounter = 0;
+let fpsStartTime = 0;
+let currentFps = 0;
 
 let focusedPlayerYaw = 0;
+let focusedPlayerName = "YOU";
+let focusedPlayerPos = null;
+let playerList = {};
 
 // Common
-canvas = null
-ctx = null
-
-let focusedPlayerName = "YOU"
-let focusedPlayerPos = null
-let playerList = {}
+let canvas = null;
+let ctx = null;
 
 // radarflow specific
-radarData = null
-freq = 0
-image = null
-map = null
-mapName = null
-loaded = false
-entityData = null
-update = false
-localYaw = 0
-localPlayerPos = null
+let radarData = null;
+let freq = 0;
+let image = null;
+let map = null;
+let mapName = null;
+let loaded = false;
+let entityData = null;
+let update = false;
+let localYaw = 0;
+let localPlayerPos = null;
 
 /// Radarflow zoom in
-zoomSet = false
-safetyBound = 50
-boundingRect = null
+let zoomSet = false;
+let safetyBound = 50;
+let boundingRect = null;
 
 // Weapon IDs
 const weaponIdMap = {
-    1: "DEAGLE",
-    2: "DUALIES",
-    3: "FIVE-SEVEN",
-    4: "GLOCK",
-    7: "AK-47",
-    8: "AUG",
-    9: "AWP",
-    10: "FAMAS",
-    11: "G3SG1",
-    13: "GALIL",
-    14: "M249",
-    16: "M4A4",
-    17: "MAC-10",
-    19: "P90",
-    23: "MP5",
-    24: "UMP",
-    25: "XM1014",
-    26: "BIZON",
-    27: "MAG-7",
-    28: "NEGEV",
-    29: "SAWED-OFF",
-    30: "TEC-9",
-    31: "ZEUS",
-    32: "P2000",
-    33: "MP7",
-    34: "MP9",
-    35: "NOVA",
-    36: "P250",
-    38: "SCAR-20",
-    39: "SG 553",
-    40: "SCOUT",
-    60: "M4A1-S",
-    61: "USP-S",
-    63: "CZ75",
-    64: "REVOLVER",
-    43: "FLASH",
-    44: "HE",
-    45: "SMOKE",
-    46: "MOLOTOV",
-    47: "DECOY",
-    48: "INCENDIARY",
-    49: "C4",
-    0: "KNIFE"
+    1: "DEAGLE", 2: "DUALIES", 3: "FIVE-SEVEN", 4: "GLOCK", 7: "AK-47",
+    8: "AUG", 9: "AWP", 10: "FAMAS", 11: "G3SG1", 13: "GALIL", 14: "M249",
+    16: "M4A4", 17: "MAC-10", 19: "P90", 23: "MP5", 24: "UMP", 25: "XM1014",
+    26: "BIZON", 27: "MAG-7", 28: "NEGEV", 29: "SAWED-OFF", 30: "TEC-9",
+    31: "ZEUS", 32: "P2000", 33: "MP7", 34: "MP9", 35: "NOVA", 36: "P250",
+    38: "SCAR-20", 39: "SG 553", 40: "SCOUT", 60: "M4A1-S", 61: "USP-S",
+    63: "CZ75", 64: "REVOLVER", 43: "FLASH", 44: "HE", 45: "SMOKE", 46: "MOLOTOV",
+    47: "DECOY", 48: "INCENDIARY", 49: "C4", 0: "KNIFE"
 };
 
-// networking
-websocket = null
-if (location.protocol == 'https:') {
-    websocketAddr = `wss://${window.location.host}/ws`
-} else {
-    websocketAddr = `ws://${window.location.host}/ws`
-}
-//websocketAddr = "ws://192.168.0.235:8000/ws"
+// Networking
+let websocket = null;
+const websocketAddr = location.protocol === 'https:'
+    ? `wss://${window.location.host}/ws`
+    : `ws://${window.location.host}/ws`;
 
 // Util functions
 const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
 const degreesToRadians = (degrees) => degrees * (Math.PI / 180);
 
-function mapCoordinates(coordinates) {
-    let offset_x = coordinates.x - map.pos_x;
-    let offset_y = coordinates.y - map.pos_y;
-
-    offset_x /= map.scale;
-    offset_y /= -map.scale;
-
-    return { x: offset_x, y: offset_y };
-}
-
-function boundingCoordinates(coordinates, boundingRect) {
-    const xScale = boundingRect.width / image.width;
-    const yScale = boundingRect.height / image.height;
-
-    const newX = (coordinates.x - boundingRect.x) / xScale;
-    const newY = (coordinates.y - boundingRect.y) / yScale;
-
-    return { x: newX, y: newY };
-}
-
-function boundingScale(value, boundingRect) {
-    const scale = image.width / boundingRect.width;
-    return value * scale;
-}
-
-function rotatePoint(cx, cy, x, y, angle) {
-    const radians = degreesToRadians(angle);
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-
-    const nx = x - cx;
-    const ny = y - cy;
-
-    const rx = nx * cos - ny * sin;
-    const ry = nx * sin + ny * cos;
-
-    return {
-        x: rx + cx,
-        y: ry + cy
-    };
-}
-
-function makeBoundingRect(x1, y1, x2, y2, aspectRatio) {
-    const topLeftX = x1;
-    const topLeftY = y1;
-    const bottomRightX = x2;
-    const bottomRightY = y2;
-
-    const width = bottomRightX - topLeftX;
-    const height = bottomRightY - topLeftY;
-
-    let newWidth, newHeight;
-    if (width / height > aspectRatio) {
-        // Wider rectangle
-        newHeight = width / aspectRatio;
-        newWidth = width;
-    } else {
-        // Taller rectangle
-        newWidth = height * aspectRatio;
-        newHeight = height;
-    }
-
-    const centerX = (topLeftX + bottomRightX) / 2;
-    const centerY = (topLeftY + bottomRightY) / 2;
-
-    const rectMinX = centerX - newWidth / 2;
-    const rectMaxX = centerX + newWidth / 2;
-    const rectMinY = centerY - newHeight / 2;
-    const rectMaxY = centerY + newHeight / 2;
-
-    return {
-        x: rectMinX,
-        y: rectMinY,
-        width: rectMaxX - rectMinX,
-        height: rectMaxY - rectMinY,
-    };
-}
-
 function render() {
-    if (update) {
-        fillCanvas();
-        if (loaded) {
-            update = false;
+    requestAnimationFrame(render);
 
-            localPlayerPos = null;
-            focusedPlayerPos = null;
-            focusedPlayerYaw = 0;
+    const now = performance.now();
+    if (!fpsStartTime) fpsStartTime = now;
+    frameCounter++;
 
-            if (entityData != null) {
-                playerList = {};
-
-                entityData.forEach((data) => {
-                    if (data.Player !== undefined) {
-                        if (data.Player.playerType === "Local") {
-                            localYaw = data.Player.yaw;
-                            localPlayerPos = data.Player.pos;
-
-                            playerList["YOU"] = {
-                                pos: data.Player.pos,
-                                yaw: data.Player.yaw
-                            };
-                        } else {
-                            playerList[data.Player.playerName] = {
-                                pos: data.Player.pos,
-                                yaw: data.Player.yaw
-                            };
-                        }
-
-                        if (data.Player.playerName === focusedPlayerName ||
-                            (focusedPlayerName === "YOU" && data.Player.playerType === "Local")) {
-                            focusedPlayerPos = data.Player.pos;
-                            focusedPlayerYaw = data.Player.yaw;
-                        }
-                    }
-                });
-
-                updatePlayerDropdown();
-            }
-
-            if (entityData != null && map != null && image != null && shouldZoom && !playerCentered) {
-                let minX = Infinity;
-                let minY = Infinity;
-                let maxX = -Infinity;
-                let maxY = -Infinity;
-
-                entityData.forEach((data) => {
-                    let mapCords = null;
-
-                    if (data.Bomb !== undefined) {
-                        mapCords = mapCoordinates(data.Bomb.pos);
-                    } else {
-                        mapCords = mapCoordinates(data.Player.pos);
-                    }
-
-                    minX = Math.min(minX, mapCords.x);
-                    minY = Math.min(minY, mapCords.y);
-                    maxX = Math.max(maxX, mapCords.x);
-                    maxY = Math.max(maxY, mapCords.y);
-                });
-
-                boundingRect = makeBoundingRect(minX - safetyBound, minY - safetyBound, maxX + safetyBound, maxY + safetyBound, image.width / image.height);
-                zoomSet = true;
-            } else if (zoomSet && !playerCentered) {
-                zoomSet = false;
-            }
-
-            drawImage();
-
-            if (entityData != null) {
-                entityData.forEach((data) => {
-                    if (data.Bomb !== undefined) {
-                        drawBomb(data.Bomb.pos, data.Bomb.isPlanted);
-                    } else {
-                        let fillStyle = localColor;
-
-                        switch (data.Player.playerType) {
-                            case "Team":
-                                fillStyle = teamColor;
-                                break;
-
-                            case "Enemy":
-                                fillStyle = enemyColor;
-                                break;
-                        }
-
-                        drawEntity(
-                            data.Player.pos,
-                            fillStyle,
-                            data.Player.isDormant,
-                            data.Player.hasBomb,
-                            data.Player.yaw,
-                            data.Player.hasAwp,
-                            data.Player.playerType,
-                            data.Player.isScoped,
-                            data.Player.playerName,
-                            false,
-                            data.Player.weaponId
-                        );
-
-                        if (drawNames && !data.Player.isDormant) {
-                            drawPlayerName(
-                                data.Player.pos,
-                                data.Player.playerName,
-                                data.Player.playerType,
-                                data.Player.hasAwp,
-                                data.Player.hasBomb,
-                                data.Player.isScoped
-                            );
-                        }
-
-                        if (drawGuns && !data.Player.isDormant) {
-                            drawPlayerWeapon(
-                                data.Player.pos,
-                                data.Player.playerType,
-                                data.Player.weaponId
-                            );
-                        }
-
-                        if (data.Player.hasBomb && !data.Player.isDormant) {
-                            drawPlayerBomb(
-                                data.Player.pos,
-                                data.Player.playerType
-                            );
-                        }
-
-                        if (drawMoney && !data.Player.isDormant && typeof data.Player.money === 'number') {
-                            drawPlayerMoney(
-                                data.Player.pos,
-                                data.Player.playerType,
-                                data.Player.money,
-                                data.Player.hasBomb
-                            );
-                        }
-                    }
-                });
-            }
-
-            if (radarData != null) {
-                if (radarData.bombPlanted && !radarData.bombExploded && radarData.bombDefuseTimeleft >= 0) {
-                    let maxWidth = 1024 - 128 - 128;
-                    let timeleft = radarData.bombDefuseTimeleft;
-
-                    // Base bar
-                    ctx.fillStyle = "black";
-                    ctx.fillRect(128, 16, maxWidth, 16);
-
-                    // Bomb timer
-                    if (radarData.bombBeingDefused) {
-                        if (radarData.bombCanDefuse) {
-                            ctx.fillStyle = teamColor;
-                        } else {
-                            ctx.fillStyle = enemyColor;
-                        }
-                    } else {
-                        ctx.fillStyle = bombColor;
-                    }
-
-                    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12);
-
-                    ctx.font = "24px Arial";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillStyle = textColor;
-                    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, 28 + 24);
-
-                    // Defuse time lines
-                    ctx.strokeStyle = "black";
-                    ctx.lineWidth = 2;
-
-                    // Kit defuse
-                    ctx.beginPath();
-                    ctx.moveTo(128 + (maxWidth * (5 / 40)), 16);
-                    ctx.lineTo(128 + (maxWidth * (5 / 40)), 32);
-                    ctx.stroke();
-
-                    // Normal defuse
-                    ctx.beginPath();
-                    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16);
-                    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32);
-                    ctx.stroke();
-
-                    // Defuse stamp line
-                    if (radarData.bombCanDefuse) {
-                        ctx.strokeStyle = "green";
-                        ctx.beginPath();
-                        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16);
-                        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32);
-                        ctx.stroke();
-                    }
-                }
-            }
-        } else {
-            if (websocket != null) {
-                ctx.font = "100px Arial";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillStyle = textColor;
-                ctx.fillText("Not on a server", 1024 / 2, 1024 / 2);
-            } else {
-                ctx.font = "100px Arial";
-                ctx.textAlign = "center";
-                ctx.fillStyle = textColor;
-                ctx.fillText("Disconnected", 1024 / 2, 1024 / 2);
-            }
-        }
-
-        if (drawStats) {
-            ctx.font = "16px Arial";
-            ctx.textAlign = "left";
-            ctx.fillStyle = textColor;
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "black";
-            ctx.strokeText(`${freq} Hz`, 2, 18);
-            ctx.fillText(`${freq} Hz`, 2, 18);
-        }
+    if (now - fpsStartTime > 1000) {
+        currentFps = Math.round(frameCounter * 1000 / (now - fpsStartTime));
+        frameCounter = 0;
+        fpsStartTime = now;
     }
 
-    if (websocket != null) {
+    if (!isRequestPending && websocket && websocket.readyState === WebSocket.OPEN) {
+        isRequestPending = true;
         websocket.send("requestInfo");
     }
+
+    renderFrame();
 }
 
-function fillCanvas() {
-    ctx.fillStyle = "#0f0f0f";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+function renderFrame() {
+    fillCanvas();
+
+    if (entityData && loaded && map && image) {
+        processPlayerPositions();
+
+        if (update) {
+            updatePlayerDropdown();
+            update = false;
+        }
+
+        drawImage();
+
+        drawEntities();
+
+        drawBombTimer();
+    } else if (!loaded) {
+        ctx.font = "40px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = textColor;
+        ctx.fillText(websocket ? "Not on server" : "Disconnected", canvas.width / 2, canvas.height / 2);
+    }
+
+    if (drawStats) {
+        ctx.font = "16px Arial";
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#00FF00";
+        ctx.fillText(`${currentFps} FPS | ${freq} Hz`, 10, 20);
+    }
+}
+
+function processPlayerPositions() {
+    if (!entityData) return;
+
+    localPlayerPos = null;
+    focusedPlayerPos = null;
+    focusedPlayerYaw = 0;
+    playerList = {};
+
+    entityData.forEach(data => {
+        if (data.Player) {
+            const player = data.Player;
+
+            if (player.playerType === "Local") {
+                localYaw = player.yaw;
+                localPlayerPos = player.pos;
+                playerList["YOU"] = {
+                    pos: player.pos,
+                    yaw: player.yaw
+                };
+            } else {
+                playerList[player.playerName] = {
+                    pos: player.pos,
+                    yaw: player.yaw
+                };
+            }
+
+            if (player.playerName === focusedPlayerName ||
+                (focusedPlayerName === "YOU" && player.playerType === "Local")) {
+                focusedPlayerPos = player.pos;
+                focusedPlayerYaw = player.yaw;
+            }
+        }
+    });
 }
 
 function drawImage() {
-    if (image == null || canvas == null)
-        return
+    if (!image || !canvas || !map) return;
 
     ctx.save();
 
@@ -422,29 +168,160 @@ function drawImage() {
     }
 
     if (playerCentered && focusedPlayerPos) {
-        const playerMapPos = mapCoordinates(focusedPlayerPos);
+        const playerX = (focusedPlayerPos.x - map.pos_x) / map.scale;
+        const playerY = (focusedPlayerPos.y - map.pos_y) / -map.scale;
+
         const zoomLevel = 0.5;
         const viewWidth = image.width * zoomLevel;
         const viewHeight = image.height * zoomLevel;
-        const viewX = playerMapPos.x - (viewWidth / 2);
-        const viewY = playerMapPos.y - (viewHeight / 2);
 
         ctx.drawImage(
             image,
-            viewX, viewY, viewWidth, viewHeight,
+            playerX - (viewWidth / 2), playerY - (viewHeight / 2), viewWidth, viewHeight,
             0, 0, canvas.width, canvas.height
         );
-    } else if (zoomSet != false && boundingRect.x != null) {
-        ctx.drawImage(image, boundingRect.x, boundingRect.y, boundingRect.width, boundingRect.height, 0, 0, canvas.width, canvas.height)
+    } else if (zoomSet && boundingRect?.x != null) {
+        ctx.drawImage(
+            image,
+            boundingRect.x, boundingRect.y, boundingRect.width, boundingRect.height,
+            0, 0, canvas.width, canvas.height
+        );
     } else {
-        ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, canvas.width, canvas.height)
+        ctx.drawImage(
+            image,
+            0, 0, image.width, image.height,
+            0, 0, canvas.width, canvas.height
+        );
     }
 
     ctx.restore();
 }
 
+function drawEntities() {
+    if (!entityData) return;
+
+    entityData.forEach(entity => {
+        if (entity.Bomb) {
+            drawBomb(entity.Bomb.pos, entity.Bomb.isPlanted);
+        } else if (entity.Player) {
+            const player = entity.Player;
+            let fillStyle = localColor;
+
+            switch (player.playerType) {
+                case "Team": fillStyle = teamColor; break;
+                case "Enemy": fillStyle = enemyColor; break;
+            }
+
+            drawEntity(
+                player.pos,
+                fillStyle,
+                player.isDormant,
+                player.hasBomb,
+                player.yaw,
+                player.hasAwp,
+                player.playerType,
+                player.isScoped,
+                player.playerName,
+                false,
+                player.weaponId
+            );
+
+            if (!player.isDormant) {
+                if (drawNames) {
+                    drawPlayerName(
+                        player.pos,
+                        player.playerName,
+                        player.playerType,
+                        player.hasAwp,
+                        player.hasBomb,
+                        player.isScoped
+                    );
+                }
+
+                if (drawGuns) {
+                    drawPlayerWeapon(
+                        player.pos,
+                        player.playerType,
+                        player.weaponId
+                    );
+                }
+
+                if (player.hasBomb) {
+                    drawPlayerBomb(
+                        player.pos,
+                        player.playerType
+                    );
+                }
+
+                if (drawMoney && typeof player.money === 'number') {
+                    drawPlayerMoney(
+                        player.pos,
+                        player.playerType,
+                        player.money,
+                        player.hasBomb
+                    );
+                }
+            }
+        }
+    });
+}
+
+function drawBombTimer() {
+    if (!radarData || !radarData.bombPlanted || radarData.bombExploded || radarData.bombDefuseTimeleft < 0) {
+        return;
+    }
+
+    const maxWidth = 1024 - 128 - 128;
+    const timeleft = radarData.bombDefuseTimeleft;
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(128, 16, maxWidth, 16);
+
+    if (radarData.bombBeingDefused) {
+        ctx.fillStyle = radarData.bombCanDefuse ? teamColor : enemyColor;
+    } else {
+        ctx.fillStyle = bombColor;
+    }
+
+    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12);
+
+    ctx.font = "24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = textColor;
+    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, 28 + 24);
+
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(128 + (maxWidth * (5 / 40)), 16);
+    ctx.lineTo(128 + (maxWidth * (5 / 40)), 32);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16);
+    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32);
+    ctx.stroke();
+
+    if (radarData.bombCanDefuse) {
+        ctx.strokeStyle = "green";
+        ctx.beginPath();
+        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16);
+        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32);
+        ctx.stroke();
+    }
+}
+
+function fillCanvas() {
+    ctx.fillStyle = "#0f0f0f";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 function updatePlayerDropdown() {
     const dropdown = document.getElementById('playerSelect');
+    if (!dropdown) return;
+
     const currentValue = dropdown.value;
 
     while (dropdown.options.length > 1) {
@@ -474,39 +351,84 @@ function updatePlayerDropdown() {
 
 function changePlayerFocus() {
     const dropdown = document.getElementById('playerSelect');
-    if (dropdown.value === "local") {
-        focusedPlayerName = "YOU";
-    } else {
-        focusedPlayerName = dropdown.value;
-    }
-    console.log(`[radarflow] Changed focus to player: ${focusedPlayerName}`);
+    focusedPlayerName = dropdown.value === "local" ? "YOU" : dropdown.value;
     update = true;
 }
 
-function mapAndTransformCoordinates(pos) {
-    let mapPos = mapCoordinates(pos);
-    let textSize = 12;
-
-    if (zoomSet) {
-        mapPos = boundingCoordinates(mapPos, boundingRect);
-        textSize = boundingScale(12, boundingRect);
-    } else if (playerCentered && focusedPlayerPos) {
-        const playerMapPos = mapCoordinates(focusedPlayerPos);
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvas.width / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvas.height / viewHeight;
-    } else {
-        mapPos.x = mapPos.x * canvas.width / image.width;
-        mapPos.y = mapPos.y * canvas.height / image.height;
+function mapCoordinates(coordinates) {
+    if (!map || !coordinates) {
+        return { x: 0, y: 0 };
     }
 
-    if (rotateMap) {
-        const canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+    const offset_x = (coordinates.x - map.pos_x) / map.scale;
+    const offset_y = (coordinates.y - map.pos_y) / -map.scale;
+
+    return { x: offset_x, y: offset_y };
+}
+
+function mapAndTransformCoordinates(pos) {
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    const imageWidth = image ? image.width : 1;
+    const imageHeight = image ? image.height : 1;
+
+    if (!map || !pos) return { pos: { x: 0, y: 0 }, textSize: 12 };
+
+    const offset_x = (pos.x - map.pos_x) / map.scale;
+    const offset_y = (pos.y - map.pos_y) / -map.scale;
+
+    let mapPos = { x: offset_x, y: offset_y };
+    let textSize = 12;
+
+    if (zoomSet && boundingRect && boundingRect.x != null) {
+        const xScale = boundingRect.width / imageWidth;
+        const yScale = boundingRect.height / imageHeight;
+        mapPos = {
+            x: (mapPos.x - boundingRect.x) / xScale,
+            y: (mapPos.y - boundingRect.y) / yScale
+        };
+        textSize = (imageWidth / boundingRect.width) * 12;
+    }
+    else if (playerCentered && focusedPlayerPos) {
+        const zoomLevel = 0.5;
+        const viewWidth = imageWidth * zoomLevel;
+        const viewHeight = imageHeight * zoomLevel;
+
+        let playerMapPos;
+        if (focusedPlayerName === "YOU" && localPlayerPos) {
+            const lpx = (localPlayerPos.x - map.pos_x) / map.scale;
+            const lpy = (localPlayerPos.y - map.pos_y) / -map.scale;
+            playerMapPos = { x: lpx, y: lpy };
+        } else if (focusedPlayerPos) {
+            const fpx = (focusedPlayerPos.x - map.pos_x) / map.scale;
+            const fpy = (focusedPlayerPos.y - map.pos_y) / -map.scale;
+            playerMapPos = { x: fpx, y: fpy };
+        } else {
+            playerMapPos = { x: 0, y: 0 };
+        }
+
+        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvasWidth / viewWidth;
+        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvasHeight / viewHeight;
+    }
+    else {
+        mapPos.x = mapPos.x * canvasWidth / imageWidth;
+        mapPos.y = mapPos.y * canvasHeight / imageHeight;
+    }
+
+    if (rotateMap && typeof focusedPlayerYaw === 'number') {
+        const canvasCenter = { x: canvasWidth / 2, y: canvasHeight / 2 };
         const rotationYaw = focusedPlayerName === "YOU" ? localYaw : focusedPlayerYaw;
-        mapPos = rotatePoint(canvasCenter.x, canvasCenter.y, mapPos.x, mapPos.y, rotationYaw + 270);
+        const angle = rotationYaw + 270;
+
+        const radians = angle * (Math.PI / 180);
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+
+        const nx = mapPos.x - canvasCenter.x;
+        const ny = mapPos.y - canvasCenter.y;
+
+        mapPos.x = nx * cos - ny * sin + canvasCenter.x;
+        mapPos.y = nx * sin + ny * cos + canvasCenter.y;
     }
 
     return { pos: mapPos, textSize: textSize };
@@ -627,8 +549,7 @@ function drawPlayerBomb(pos, playerType) {
 }
 
 function drawBomb(pos, planted) {
-    if (map == null)
-        return
+    if (!map) return;
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
@@ -661,8 +582,7 @@ function drawBomb(pos, planted) {
 }
 
 function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, isScoped, playerName, isPlanted, weaponId) {
-    if (map == null)
-        return
+    if (!map) return;
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
@@ -710,20 +630,6 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         ctx.arc(mapPos.x, mapPos.y, circleRadius, 0, 2 * Math.PI);
         ctx.fillStyle = fillStyle;
         ctx.fill();
-
-        if (hasAwp && false) {
-            let style = "yellow";
-
-            if (playerType == "Enemy") {
-                style = "orange";
-            }
-
-            ctx.beginPath();
-            ctx.arc(mapPos.x, mapPos.y, circleRadius / 1.5, 0, 2 * Math.PI);
-            ctx.fillStyle = style;
-            ctx.fill();
-        }
-
         ctx.closePath();
 
         const arrowHeadX = mapPos.x + radius * Math.cos(adjustedYaw * (Math.PI / 180));
@@ -756,11 +662,7 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
             ctx.moveTo(arrowHeadX, arrowHeadY);
             ctx.lineTo(lineOfSightX, lineOfSightY);
 
-            if (playerType == "Enemy")
-                ctx.strokeStyle = enemyColor;
-            else
-                ctx.strokeStyle = teamColor;
-
+            ctx.strokeStyle = playerType == "Enemy" ? enemyColor : teamColor;
             ctx.lineWidth = 1;
             ctx.stroke();
         }
@@ -780,132 +682,164 @@ function getWeaponName(weaponId) {
 }
 
 function loadMap(mapName) {
-    console.log(`[radarflow] loading map ${mapName}`);
-    loaded = true;
-    const map_img = new Image();
-    map_img.src = `assets/image/${mapName}_radar_psd.png`;
+    if (!mapName) return;
 
-    fetch(`assets/json/${mapName}.json`)
-        .then(response => response.json())
+    console.log(`[radarflow] Loading map "${mapName}"`);
+    loaded = true;
+
+    // Load JSON data
+    const jsonPath = `assets/json/${mapName}.json`;
+    fetch(jsonPath)
+        .then(response => {
+            if (!response.ok) throw new Error(`JSON not found: ${response.status}`);
+            return response.json();
+        })
         .then(data => {
+            console.log("[radarflow] Map data loaded");
             map = data;
+            update = true;
         })
         .catch(error => {
-            console.error('Error loading JSON file:', error);
+            console.error(`[radarflow] Error loading JSON: ${error}`);
         });
 
+    const imagePath = `assets/image/${mapName}_radar_psd.png`;
+    const map_img = new Image();
+
     map_img.onload = () => {
+        console.log("[radarflow] Map image loaded");
         image = map_img;
         update = true;
     };
+
+    map_img.onerror = (e) => {
+        console.error(`[radarflow] Error loading image: ${e}`);
+    };
+
+    map_img.src = imagePath;
 }
 
 function unloadMap() {
-    console.log("[radarflow] unloading map");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     map = null;
     mapName = null;
-    loaded = false,
+    loaded = false;
     update = true;
-    requestAnimationFrame(render);
+}
+
+function processData(data) {
+    if (!data) return;
+
+    radarData = data;
+    freq = data.freq;
+    entityData = data.entityData;
+
+    if (data.money_reveal_enabled !== undefined) {
+        const checkbox = document.getElementById("moneyReveal");
+        if (checkbox) checkbox.checked = data.money_reveal_enabled;
+    }
+
+    if (data.ingame === false) {
+        if (loaded) unloadMap();
+    } else {
+        if (!loaded && data.mapName) {
+            mapName = data.mapName;
+            loadMap(mapName);
+        }
+    }
+
+    update = true;
+}
+
+function decompressData(data) {
+    try {
+        if (data[0] === 0x01) {
+            try {
+                if (typeof pako === 'undefined') {
+                    console.error("[radarflow] Pako library not available");
+                    return null;
+                }
+
+                const decompressed = pako.inflate(data.slice(1));
+                const text = new TextDecoder().decode(decompressed);
+                return JSON.parse(text);
+            } catch (e) {
+                console.error("[radarflow] Decompression error:", e);
+                return null;
+            }
+        } else if (data[0] === 0x00) {
+            try {
+                const text = new TextDecoder().decode(data.slice(1));
+                return JSON.parse(text);
+            } catch (e) {
+                console.error("[radarflow] Parse error:", e);
+                return null;
+            }
+        } else {
+            console.error("[radarflow] Unknown data format");
+            return null;
+        }
+    } catch (e) {
+        console.error("[radarflow] Data processing error:", e);
+        return null;
+    }
 }
 
 function connect() {
     if (websocket == null) {
+        console.log(`[radarflow] Connecting to ${websocketAddr}`);
+
         let socket = new WebSocket(websocketAddr);
 
         socket.onopen = () => {
             console.log("[radarflow] Connection established");
-            websocket.send("requestInfo");
+            requestAnimationFrame(render);
         };
 
         socket.onmessage = (event) => {
-            if (event.data == "error") {
-                console.log("[radarflow] Server had an unknown error");
-            } else {
+            isRequestPending = false;
+
+            if (event.data === "error") {
+                console.error("[radarflow] Server error");
+                return;
+            }
+
+            if (event.data instanceof Blob) {
+                event.data.arrayBuffer().then(buffer => {
+                    const data = new Uint8Array(buffer);
+                    const jsonData = decompressData(data);
+                    if (jsonData) processData(jsonData);
+                }).catch(err => {
+                    console.error("[radarflow] Buffer processing error:", err);
+                });
+            } else if (typeof event.data === 'string') {
                 try {
-                    let data = JSON.parse(event.data);
-                    radarData = data;
-                    freq = data.freq;
-
-                    if (data.money_reveal_enabled !== undefined) {
-                        document.getElementById("moneyReveal").checked = data.money_reveal_enabled;
-                    }
-
-                    if (data.ingame == false) {
-                        mapName = null;
-                        entityData = null;
-
-                        if (loaded)
-                            unloadMap();
+                    const jsonData = JSON.parse(event.data);
+                    if (jsonData.action === "toggleMoneyReveal") {
+                        document.getElementById("moneyReveal").checked = jsonData.enabled;
                     } else {
-                        if (!loaded) {
-                            mapName = data.mapName;
-                            entityData = data.entityData;
-                            loadMap(mapName);
-                        } else {
-                            entityData = data.entityData;
-                        }
+                        processData(jsonData);
                     }
-
-                    update = true;
-                    requestAnimationFrame(render);
                 } catch (e) {
-                    console.error("[radarflow] Error parsing server message:", e, event.data);
+                    console.error("[radarflow] JSON parse error:", e);
                 }
             }
         };
 
         socket.onclose = (event) => {
-            if (event.wasClean) {
-                console.log("[radarflow] connection closed");
-            } else {
-                console.log("[radarflow] connection died");
-            }
-
-            playerData = null;
+            console.log("[radarflow] Connection closed");
             websocket = null;
             unloadMap();
-
-            setTimeout(function () {
-                connect();
-            }, 1000);
+            setTimeout(connect, 1000);
         };
 
         socket.onerror = (error) => {
-            console.log(`[radarflow] websocket error: ${error}`);
+            console.error("[radarflow] WebSocket error:", error);
         };
 
         websocket = socket;
-    } else {
-        setTimeout(() => {
-            connect();
-        }, 1000);
     }
 }
-
-addEventListener("DOMContentLoaded", (e) => {
-    const savedDrawMoney = localStorage.getItem('drawMoney');
-    drawMoney = savedDrawMoney !== null ? savedDrawMoney === 'true' : true;
-
-    document.getElementById("zoomCheck").checked = false;
-    document.getElementById("statsCheck").checked = true;
-    document.getElementById("namesCheck").checked = true;
-    document.getElementById("gunsCheck").checked = true;
-    document.getElementById("moneyDisplay").checked = drawMoney;
-    document.getElementById("moneyReveal").checked = false;
-    document.getElementById("rotateCheck").checked = true;
-    document.getElementById("centerCheck").checked = true;
-
-    canvas = document.getElementById('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
-    canvasAspectRatio = canvas.width / canvas.height;
-    ctx = canvas.getContext('2d');
-
-    console.log(`[radarflow] connecting to ${websocketAddr}`);
-    connect();
-});
 
 function toggleZoom() {
     shouldZoom = !shouldZoom;
@@ -933,6 +867,7 @@ function toggleCentered() {
 
 function toggleMoneyReveal() {
     if (websocket && websocket.readyState === WebSocket.OPEN) {
+        console.log("[radarflow] Sending toggleMoneyReveal command");
         websocket.send("toggleMoneyReveal");
     }
 }
@@ -940,8 +875,59 @@ function toggleMoneyReveal() {
 function toggleDisplayMoney() {
     drawMoney = !drawMoney;
     update = true;
-
-    console.log("[radarflow] Money display toggled:", drawMoney);
-
     localStorage.setItem('drawMoney', drawMoney ? 'true' : 'false');
 }
+
+function togglePerformanceMode() {
+    const performanceMode = document.getElementById('performanceMode').checked;
+
+    if (performanceMode) {
+        drawNames = false;
+        drawGuns = false;
+        drawMoney = false;
+
+        document.getElementById("namesCheck").checked = false;
+        document.getElementById("gunsCheck").checked = false;
+        document.getElementById("moneyDisplay").checked = false;
+
+        console.log("[radarflow] Performance mode enabled");
+    } else {
+        drawNames = document.getElementById("namesCheck").checked = true;
+        drawGuns = document.getElementById("gunsCheck").checked = true;
+        drawMoney = document.getElementById("moneyDisplay").checked = true;
+
+        console.log("[radarflow] Performance mode disabled");
+    }
+}
+
+addEventListener("DOMContentLoaded", () => {
+    const savedDrawMoney = localStorage.getItem('drawMoney');
+    drawMoney = savedDrawMoney !== null ? savedDrawMoney === 'true' : true;
+
+    const checkboxes = {
+        "zoomCheck": false,
+        "statsCheck": true,
+        "namesCheck": true,
+        "gunsCheck": true,
+        "moneyDisplay": drawMoney,
+        "moneyReveal": false,
+        "rotateCheck": true,
+        "centerCheck": true
+    };
+
+    Object.entries(checkboxes).forEach(([id, state]) => {
+        const checkbox = document.getElementById(id);
+        if (checkbox) checkbox.checked = state;
+    });
+
+    canvas = document.getElementById('canvas');
+    if (canvas) {
+        canvas.width = 1024;
+        canvas.height = 1024;
+        ctx = canvas.getContext('2d');
+
+        connect();
+    } else {
+        console.error("[radarflow] Canvas element not found");
+    }
+});

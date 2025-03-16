@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>radarflow</title>
     <link href="styles.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 </head>
 
 <body>
@@ -13,6 +14,10 @@
         <button id="showMenuBtn" onclick="toggleMenu(true)" style="display: none;">Show Menu</button>
         <div id="settingsHolder">
             <div class="settings">
+                <div>
+                    <input type="checkbox" onclick="togglePerformanceMode()" id="performanceMode" />
+                    <label for="performanceMode">Performance Mode</label>
+                </div>
                 <div>
                     <input type="checkbox" onclick="toggleZoom()" id="zoomCheck" name="zoom" />
                     <label for="zoomCheck">Zoom</label>
@@ -65,5 +70,4 @@
     <script src="webstuff.js"></script>
 
 </body>
-
 </html>

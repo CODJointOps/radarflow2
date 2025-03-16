@@ -58,6 +58,14 @@ impl PlayerData {
             money
         }
     }
+
+    pub fn get_pos(&self) -> &Vec3 {
+        &self.pos
+    }
+
+    pub fn get_player_name(&self) -> &str {
+        &self.player_name
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +181,14 @@ impl RadarData {
             options: CheatOptions::default(),
             money_reveal_enabled: false
         }
+    }
+
+    pub fn get_entities(&self) -> &Vec<EntityData> {
+        &self.player_data
+    }
+
+    pub fn set_entities(&mut self, entities: Vec<EntityData>) {
+        self.player_data = entities;
     }
 }
 
