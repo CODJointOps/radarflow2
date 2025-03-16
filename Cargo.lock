@@ -1888,6 +1888,7 @@ dependencies = [
  "enum-primitive-derive",
  "flate2",
  "itertools 0.13.0",
+ "lazy_static",
  "local-ip-address",
  "log",
  "memflow",
