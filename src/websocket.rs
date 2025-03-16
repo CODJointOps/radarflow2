@@ -10,7 +10,7 @@ use std::io::Write;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 
-use crate::comms::RadarData;
+use crate::comms::{RadarData, ArcRwlockRadarData};
 
 #[derive(Clone)]
 struct AppState {
@@ -34,14 +34,25 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     if let Ok(json) = serde_json::to_string(&*radar_data) {
                         compression_buffer.clear();
 
-                        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+                        let compression_level = if json.len() > 10000 {
+                            Compression::best()
+                        } else {
+                            Compression::fast()
+                        };
+
+                        let mut encoder = GzEncoder::new(Vec::new(), compression_level);
                         if encoder.write_all(json.as_bytes()).is_ok() {
                             match encoder.finish() {
                                 Ok(compressed) => {
-                                    let mut message = vec![0x01];
-                                    message.extend_from_slice(&compressed);
-
-                                    let _ = socket.send(Message::Binary(message)).await;
+                                    if compressed.len() < json.len() {
+                                        let mut message = vec![0x01];
+                                        message.extend_from_slice(&compressed);
+                                        let _ = socket.send(Message::Binary(message)).await;
+                                    } else {
+                                        let mut uncompressed = vec![0x00];
+                                        uncompressed.extend_from_slice(json.as_bytes());
+                                        let _ = socket.send(Message::Binary(uncompressed)).await;
+                                    }
                                 },
                                 Err(_) => {
                                     let mut uncompressed = vec![0x00];

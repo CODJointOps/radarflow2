@@ -68,6 +68,35 @@ const websocketAddr = location.protocol === 'https:'
 const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
 const degreesToRadians = (degrees) => degrees * (Math.PI / 180);
 
+const pingTracker = {
+    history: [],
+    lastRequestTime: 0,
+    maxSamples: 10,
+
+    startRequest: function () {
+        this.lastRequestTime = performance.now();
+    },
+
+    endRequest: function () {
+        if (this.lastRequestTime === 0) return;
+
+        const ping = performance.now() - this.lastRequestTime;
+        this.history.push(ping);
+
+        if (this.history.length > this.maxSamples) {
+            this.history.shift();
+        }
+
+        this.lastRequestTime = 0;
+    },
+
+    getAveragePing: function () {
+        if (this.history.length === 0) return 0;
+        const sum = this.history.reduce((a, b) => a + b, 0);
+        return sum / this.history.length;
+    }
+};
+
 function render() {
     requestAnimationFrame(render);
 
@@ -83,6 +112,7 @@ function render() {
 
     if (!isRequestPending && websocket && websocket.readyState === WebSocket.OPEN) {
         isRequestPending = true;
+        pingTracker.startRequest();
         websocket.send("requestInfo");
     }
 
@@ -117,7 +147,7 @@ function renderFrame() {
         ctx.font = "16px Arial";
         ctx.textAlign = "left";
         ctx.fillStyle = "#00FF00";
-        ctx.fillText(`${currentFps} FPS | ${freq} Hz`, 10, 20);
+        ctx.fillText(`${currentFps} FPS | ${freq} Hz | Ping: ${Math.round(pingTracker.getAveragePing())}ms`, 10, 20);
     }
 }
 
@@ -753,6 +783,8 @@ function processData(data) {
 
 function decompressData(data) {
     try {
+        pingTracker.endRequest();
+
         if (data[0] === 0x01) {
             try {
                 if (typeof pako === 'undefined') {
