@@ -10,6 +10,7 @@
 
 <body>
     <div id="canvasContainer">
+        <button id="showMenuBtn" onclick="toggleMenu(true)" style="display: none;">Show Menu</button>
         <div id="settingsHolder">
             <div class="settings">
                 <div>
@@ -29,7 +30,8 @@
                     <label for="gunsCheck">Weapons</label>
                 </div>
                 <div>
-                    <input type="checkbox" onclick="toggleDisplayMoney()" id="moneyDisplay" name="money-display" checked />
+                    <input type="checkbox" onclick="toggleDisplayMoney()" id="moneyDisplay" name="money-display"
+                        checked />
                     <label for="moneyDisplay">Display Money</label>
                 </div>
                 <div>
@@ -47,35 +49,21 @@
                         <option value="local">YOU</option>
                     </select>
                 </div>
-
                 <button id="showDangerousBtn" onclick="toggleDangerousOptions()">Show Dangerous Options</button>
-
                 <div class="dangerous-options" id="dangerousOptions">
                     <div>
                         <input type="checkbox" onclick="toggleMoneyReveal()" id="moneyReveal" name="money" />
                         <label for="moneyReveal">Money Reveal (Write Memory)</label>
                     </div>
                 </div>
+                <button id="hideMenuBtn" onclick="toggleMenu(false)">Hide Menu</button>
             </div>
         </div>
         <canvas id="canvas"></canvas>
     </div>
     <script src="script.js"></script>
+    <script src="webstuff.js"></script>
 
-    <script>
-        function toggleDangerousOptions() {
-            const dangerousSection = document.getElementById('dangerousOptions');
-            const button = document.getElementById('showDangerousBtn');
-
-            if (dangerousSection.classList.contains('revealed')) {
-                dangerousSection.classList.remove('revealed');
-                button.textContent = 'Show Dangerous Options';
-            } else {
-                dangerousSection.classList.add('revealed');
-                button.textContent = 'Hide Dangerous Options';
-            }
-        }
-    </script>
 </body>
 
 </html>
