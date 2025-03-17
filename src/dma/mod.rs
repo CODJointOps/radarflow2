@@ -210,7 +210,6 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
                         )
                     )
                 );
-                log::debug!("Added local player with money: {}", local_data.money);
             }
 
             // Other players
