@@ -50,12 +50,33 @@
                 <div>
                     <input type="checkbox" onclick="toggleCentered()" id="centerCheck" name="center" checked />
                     <label for="centerCheck">Player Centered</label>
+                    <div id="zoomLevelContainer" style="margin-top: 5px; margin-left: 20px; display: none;">
+                        <label for="zoomLevelSlider">Zoom Level: </label>
+                        <span id="zoomLevelValue">1.0</span><br>
+                        <input type="range" id="zoomLevelSlider" min="1.0" max="5.0" step="0.1" value="1.0"
+                            style="width: 100%; margin: 5px 0;" oninput="updateZoomLevel(this.value)">
+                    </div>
                 </div>
                 <div class="player-focus">
                     <label for="playerSelect">Focus Player:</label>
                     <select id="playerSelect" onchange="changePlayerFocus()">
                         <option value="local">YOU</option>
                     </select>
+                </div>
+                <div id="sizeControlsContainer"
+                    style="margin-top: 10px; padding: 5px; border-top: 1px solid rgba(255, 255, 255, 0.2);">
+                    <div class="size-control" style="margin-bottom: 8px;">
+                        <label for="textSizeSlider">Text Size: </label>
+                        <span id="textSizeValue">1.0</span><br>
+                        <input type="range" id="textSizeSlider" min="0.1" max="2.0" step="0.1" value="1.0"
+                            style="width: 100%; margin: 5px 0;" oninput="updateTextSize(this.value)">
+                    </div>
+                    <div class="size-control">
+                        <label for="entitySizeSlider">Player Size: </label>
+                        <span id="entitySizeValue">1.0</span><br>
+                        <input type="range" id="entitySizeSlider" min="0.5" max="2.0" step="0.1" value="1.0"
+                            style="width: 100%; margin: 5px 0;" oninput="updateEntitySize(this.value)">
+                    </div>
                 </div>
                 <button id="showDangerousBtn" onclick="toggleDangerousOptions()">Show Dangerous Options</button>
                 <div class="dangerous-options" id="dangerousOptions">
@@ -71,6 +92,6 @@
     </div>
     <script src="script.js"></script>
     <script src="webstuff.js"></script>
-
 </body>
+
 </html>

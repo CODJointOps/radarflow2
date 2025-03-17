@@ -17,10 +17,23 @@ let drawNames = true;
 let drawGuns = true;
 let drawMoney = true;
 
+let canvasScale = 1;
+let minTextSize = 16;
+let minEntitySize = 10;
+let textSizeMultiplier = 1.0;
+let entitySizeMultiplier = 1.0;
+
+const DEFAULT_TEXT_SIZE = 0.4;
+const DEFAULT_ENTITY_SIZE = 1.2;
+const DEFAULT_ZOOM_LEVEL = 2.4;
+
 const NETWORK_SETTINGS = {
     useInterpolation: true,
     interpolationAmount: 0.6,
-    pingInterval: 3000
+    pingInterval: 3000,
+    maxRetries: 5,
+    requestTimeout: 5000,
+    reconnectDelay: 1000
 };
 
 let connectionHealthy = true;
@@ -40,7 +53,6 @@ let lastKnownPositions = {};
 let entityInterpolationData = {};
 let lastUpdateTime = 0;
 let networkLatencyHistory = [];
-let lastPingSent = 0;
 
 let focusedPlayerYaw = 0;
 let focusedPlayerName = "YOU";
@@ -231,6 +243,7 @@ function render() {
 
     renderFrame();
 }
+
 function sendRequest() {
     isRequestPending = true;
     pingTracker.startRequest();
@@ -280,7 +293,8 @@ function renderFrame() {
 
         drawBombTimer();
     } else if (!loaded) {
-        ctx.font = "40px Arial";
+        const fontSize = Math.max(40 * canvasScale, 16);
+        ctx.font = `${fontSize}px Arial`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = textColor;
@@ -288,14 +302,15 @@ function renderFrame() {
     }
 
     if (drawStats) {
-        ctx.font = "16px Arial";
+        const fontSize = Math.max(16 * canvasScale, 12);
+        ctx.font = `${fontSize}px Arial`;
         ctx.textAlign = "left";
         ctx.fillStyle = "#00FF00";
         let rotationStatus = "Active";
         if (temporarilyDisableRotation) rotationStatus = "Manually Disabled";
         else if (rotationDisabledUntilRespawn) rotationStatus = "Disabled (Death)";
 
-        ctx.fillText(`${currentFps} FPS | ${freq} Hz | Ping: ${Math.round(pingTracker.getAveragePing())}ms | Rotation: ${rotationStatus}`, 10, 20);
+        ctx.fillText(`${currentFps} FPS | ${freq} Hz | Ping: ${Math.round(pingTracker.getAveragePing())}ms | Rotation: ${rotationStatus}`, 10, fontSize + 4);
     }
 }
 
@@ -361,43 +376,47 @@ function drawImage() {
 
     ctx.save();
 
-    const shouldRotate = rotateMap &&
+    if (playerCentered && focusedPlayerPos) {
+        if (playerCenteredZoom !== 1.0) {
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(playerCenteredZoom, playerCenteredZoom);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        }
+
+        if (rotateMap &&
+            focusedPlayerPos &&
+            !temporarilyDisableRotation &&
+            !rotationDisabledUntilRespawn) {
+
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(degreesToRadians(focusedPlayerYaw + 270));
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        }
+
+        const playerX = (focusedPlayerPos.x - map.pos_x) / map.scale;
+        const playerY = (focusedPlayerPos.y - map.pos_y) / -map.scale;
+
+        const playerCanvasX = (playerX / image.width) * canvas.width;
+        const playerCanvasY = (playerY / image.height) * canvas.height;
+
+        const translateX = (canvas.width / 2) - playerCanvasX;
+        const translateY = (canvas.height / 2) - playerCanvasY;
+
+        ctx.translate(translateX, translateY);
+    } else if (rotateMap &&
         focusedPlayerPos &&
         !temporarilyDisableRotation &&
-        !rotationDisabledUntilRespawn;
-
-    if (shouldRotate) {
+        !rotationDisabledUntilRespawn) {
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate(degreesToRadians(focusedPlayerYaw + 270));
         ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
-    if (playerCentered && focusedPlayerPos) {
-        const playerX = (focusedPlayerPos.x - map.pos_x) / map.scale;
-        const playerY = (focusedPlayerPos.y - map.pos_y) / -map.scale;
-
-        const zoomLevel = 0.5;
-        const viewWidth = image.width * zoomLevel;
-        const viewHeight = image.height * zoomLevel;
-
-        ctx.drawImage(
-            image,
-            playerX - (viewWidth / 2), playerY - (viewHeight / 2), viewWidth, viewHeight,
-            0, 0, canvas.width, canvas.height
-        );
-    } else if (zoomSet && boundingRect?.x != null) {
-        ctx.drawImage(
-            image,
-            boundingRect.x, boundingRect.y, boundingRect.width, boundingRect.height,
-            0, 0, canvas.width, canvas.height
-        );
-    } else {
-        ctx.drawImage(
-            image,
-            0, 0, image.width, image.height,
-            0, 0, canvas.width, canvas.height
-        );
-    }
+    ctx.drawImage(
+        image,
+        0, 0, image.width, image.height,
+        0, 0, canvas.width, canvas.height
+    );
 
     ctx.restore();
 }
@@ -408,12 +427,119 @@ function toggleHealth() {
     localStorage.setItem('drawHealth', drawHealth ? 'true' : 'false');
 }
 
+function mapAndTransformCoordinates(pos) {
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    const imageWidth = image ? image.width : 1;
+    const imageHeight = image ? image.height : 1;
+
+    if (!map || !pos) return {
+        pos: { x: 0, y: 0 },
+        textSize: minTextSize * textSizeMultiplier
+    };
+
+    const posX = (pos.x - map.pos_x) / map.scale;
+    const posY = (pos.y - map.pos_y) / -map.scale;
+
+    let screenX = (posX / imageWidth) * canvasWidth;
+    let screenY = (posY / imageHeight) * canvasHeight;
+
+    if (playerCentered && focusedPlayerPos) {
+        const playerX = (focusedPlayerPos.x - map.pos_x) / map.scale;
+        const playerY = (focusedPlayerPos.y - map.pos_y) / -map.scale;
+
+        const playerRelX = playerX / imageWidth;
+        const playerRelY = playerY / imageHeight;
+
+        const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
+
+        const playerScreenX = (playerX / imageWidth) * canvasWidth;
+        const playerScreenY = (playerY / imageHeight) * canvasHeight;
+
+        const deltaX = screenX - playerScreenX;
+        const deltaY = screenY - playerScreenY;
+
+        const zoomedDeltaX = deltaX * playerCenteredZoom;
+        const zoomedDeltaY = deltaY * playerCenteredZoom;
+
+        screenX = centerX + zoomedDeltaX;
+        screenY = centerY + zoomedDeltaY;
+
+        if (rotateMap &&
+            !temporarilyDisableRotation &&
+            !rotationDisabledUntilRespawn) {
+
+            const relX = screenX - centerX;
+            const relY = screenY - centerY;
+
+            const angle = degreesToRadians(focusedPlayerYaw + 270);
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            const rotX = relX * cos - relY * sin;
+            const rotY = relX * sin + relY * cos;
+
+            screenX = rotX + centerX;
+            screenY = rotY + centerY;
+        }
+    } else if (rotateMap &&
+        focusedPlayerPos &&
+        !temporarilyDisableRotation &&
+        !rotationDisabledUntilRespawn) {
+
+        const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
+
+        const relX = screenX - centerX;
+        const relY = screenY - centerY;
+
+        const angle = degreesToRadians(focusedPlayerYaw + 270);
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        const rotX = relX * cos - relY * sin;
+        const rotY = relX * sin + relY * cos;
+
+        screenX = rotX + centerX;
+        screenY = rotY + centerY;
+    }
+
+    const finalTextSize = playerCentered ?
+        minTextSize * textSizeMultiplier * playerCenteredZoom :
+        minTextSize * textSizeMultiplier;
+
+    return {
+        pos: { x: screenX, y: screenY },
+        textSize: finalTextSize
+    };
+}
+
+function updateZoomLevel(value) {
+    playerCenteredZoom = parseFloat(value);
+    const valueDisplay = document.getElementById('zoomLevelValue');
+    if (valueDisplay) valueDisplay.textContent = value;
+    localStorage.setItem('playerCenteredZoom', value);
+}
+
+function toggleCentered() {
+    playerCentered = !playerCentered;
+    updateZoomSliderVisibility();
+}
+
+function updateZoomSliderVisibility() {
+    const zoomSliderContainer = document.getElementById('zoomLevelContainer');
+    if (zoomSliderContainer) {
+        zoomSliderContainer.style.display = playerCentered ? 'block' : 'none';
+    }
+}
+
 function drawPlayerHealth(pos, playerType, health, hasBomb) {
     if (!map) return;
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
-    const textSize = transformed.textSize * 0.8;
+    const textSize = transformed.textSize;
 
     let extraOffset = 0;
     if (drawNames) extraOffset += 15;
@@ -432,8 +558,9 @@ function drawPlayerHealth(pos, playerType, health, hasBomb) {
         healthColor = "#FF0000";
     }
 
-    const barWidth = 40;
-    const barHeight = 5;
+    const barWidth = Math.max(60, 40 * textSizeMultiplier);
+    const barHeight = Math.max(8, 5 * textSizeMultiplier);
+
     ctx.fillStyle = "#444444";
     ctx.fillRect(mapPos.x - barWidth / 2, textY, barWidth, barHeight);
 
@@ -441,15 +568,15 @@ function drawPlayerHealth(pos, playerType, health, hasBomb) {
     const healthWidth = (health / 100) * barWidth;
     ctx.fillRect(mapPos.x - barWidth / 2, textY, healthWidth, barHeight);
 
-    ctx.font = `${textSize}px Arial`;
+    ctx.font = `bold ${textSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
-    ctx.strokeText(`${health}HP`, mapPos.x, textY + barHeight + 1);
+    ctx.strokeText(`${health}HP`, mapPos.x, textY + barHeight + 2);
     ctx.fillStyle = healthColor;
-    ctx.fillText(`${health}HP`, mapPos.x, textY + barHeight + 1);
+    ctx.fillText(`${health}HP`, mapPos.x, textY + barHeight + 2);
 }
 
 function drawEntities() {
@@ -577,8 +704,12 @@ function drawBombTimer() {
     const maxWidth = 1024 - 128 - 128;
     const timeleft = radarData.bombDefuseTimeleft;
 
+    const timerHeight = Math.max(16, 10 * canvasScale);
+    const timerY = Math.max(16, 10 * canvasScale);
+    const fontSize = Math.max(24, 18 * canvasScale);
+
     ctx.fillStyle = "black";
-    ctx.fillRect(128, 16, maxWidth, 16);
+    ctx.fillRect(128, timerY, maxWidth, timerHeight);
 
     if (radarData.bombBeingDefused) {
         ctx.fillStyle = radarData.bombCanDefuse ? teamColor : enemyColor;
@@ -586,32 +717,32 @@ function drawBombTimer() {
         ctx.fillStyle = bombColor;
     }
 
-    ctx.fillRect(130, 18, (maxWidth - 2) * (timeleft / 40), 12);
+    ctx.fillRect(130, timerY + 2, (maxWidth - 2) * (timeleft / 40), timerHeight - 4);
 
-    ctx.font = "24px Arial";
+    ctx.font = `bold ${fontSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = textColor;
-    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, 28 + 24);
+    ctx.fillText(`${timeleft.toFixed(1)}s`, 1024 / 2, timerY + timerHeight + fontSize / 2 + 4);
 
     ctx.strokeStyle = "black";
     ctx.lineWidth = 2;
 
     ctx.beginPath();
-    ctx.moveTo(128 + (maxWidth * (5 / 40)), 16);
-    ctx.lineTo(128 + (maxWidth * (5 / 40)), 32);
+    ctx.moveTo(128 + (maxWidth * (5 / 40)), timerY);
+    ctx.lineTo(128 + (maxWidth * (5 / 40)), timerY + timerHeight);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), 16);
-    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), 32);
+    ctx.moveTo(130 + (maxWidth - 2) * (10 / 40), timerY);
+    ctx.lineTo(130 + (maxWidth - 2) * (10 / 40), timerY + timerHeight);
     ctx.stroke();
 
     if (radarData.bombCanDefuse) {
         ctx.strokeStyle = "green";
         ctx.beginPath();
-        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 16);
-        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), 32);
+        ctx.moveTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), timerY);
+        ctx.lineTo(130 + (maxWidth - 2) * (radarData.bombDefuseEnd / 40), timerY + timerHeight);
         ctx.stroke();
     }
 }
@@ -670,79 +801,6 @@ function mapCoordinates(coordinates) {
     return { x: offset_x, y: offset_y };
 }
 
-function mapAndTransformCoordinates(pos) {
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
-    const imageWidth = image ? image.width : 1;
-    const imageHeight = image ? image.height : 1;
-
-    if (!map || !pos) return { pos: { x: 0, y: 0 }, textSize: 12 };
-
-    const offset_x = (pos.x - map.pos_x) / map.scale;
-    const offset_y = (pos.y - map.pos_y) / -map.scale;
-
-    let mapPos = { x: offset_x, y: offset_y };
-    let textSize = 12;
-
-    if (zoomSet && boundingRect && boundingRect.x != null) {
-        const xScale = boundingRect.width / imageWidth;
-        const yScale = boundingRect.height / imageHeight;
-        mapPos = {
-            x: (mapPos.x - boundingRect.x) / xScale,
-            y: (mapPos.y - boundingRect.y) / yScale
-        };
-        textSize = (imageWidth / boundingRect.width) * 12;
-    }
-    else if (playerCentered && focusedPlayerPos) {
-        const zoomLevel = 0.5;
-        const viewWidth = imageWidth * zoomLevel;
-        const viewHeight = imageHeight * zoomLevel;
-
-        let playerMapPos;
-        if (focusedPlayerName === "YOU" && localPlayerPos) {
-            const lpx = (localPlayerPos.x - map.pos_x) / map.scale;
-            const lpy = (localPlayerPos.y - map.pos_y) / -map.scale;
-            playerMapPos = { x: lpx, y: lpy };
-        } else if (focusedPlayerPos) {
-            const fpx = (focusedPlayerPos.x - map.pos_x) / map.scale;
-            const fpy = (focusedPlayerPos.y - map.pos_y) / -map.scale;
-            playerMapPos = { x: fpx, y: fpy };
-        } else {
-            playerMapPos = { x: 0, y: 0 };
-        }
-
-        mapPos.x = (mapPos.x - (playerMapPos.x - viewWidth / 2)) * canvasWidth / viewWidth;
-        mapPos.y = (mapPos.y - (playerMapPos.y - viewHeight / 2)) * canvasHeight / viewHeight;
-    }
-    else {
-        mapPos.x = mapPos.x * canvasWidth / imageWidth;
-        mapPos.y = mapPos.y * canvasHeight / imageHeight;
-    }
-
-    const shouldRotate = rotateMap &&
-        typeof focusedPlayerYaw === 'number' &&
-        !temporarilyDisableRotation &&
-        !rotationDisabledUntilRespawn;
-
-    if (shouldRotate) {
-        const canvasCenter = { x: canvasWidth / 2, y: canvasHeight / 2 };
-        const rotationYaw = focusedPlayerName === "YOU" ? localYaw : focusedPlayerYaw;
-        const angle = rotationYaw + 270;
-
-        const radians = angle * (Math.PI / 180);
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-
-        const nx = mapPos.x - canvasCenter.x;
-        const ny = mapPos.y - canvasCenter.y;
-
-        mapPos.x = nx * cos - ny * sin + canvasCenter.x;
-        mapPos.y = nx * sin + ny * cos + canvasCenter.y;
-    }
-
-    return { pos: mapPos, textSize: textSize };
-}
-
 function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) {
     if (!map) return;
 
@@ -766,11 +824,11 @@ function drawPlayerName(pos, playerName, playerType, hasAwp, hasBomb, isScoped) 
         displayName += " [SCOPED]";
     }
 
-    ctx.font = `${textSize}px Arial`;
+    ctx.font = `bold ${textSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.strokeText(displayName, mapPos.x, textY);
     ctx.fillText(displayName, mapPos.x, textY);
@@ -800,11 +858,11 @@ function drawPlayerMoney(pos, playerType, money, hasBomb) {
         ctx.fillStyle = "#FF4500";
     }
 
-    ctx.font = `${textSize}px Arial`;
+    ctx.font = `bold ${textSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.strokeText(formattedMoney, mapPos.x, textY);
     ctx.fillText(formattedMoney, mapPos.x, textY);
@@ -827,11 +885,11 @@ function drawPlayerWeapon(pos, playerType, weaponId) {
         ctx.fillStyle = textColor;
     }
 
-    ctx.font = `${textSize}px Arial`;
+    ctx.font = `bold ${textSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.strokeText(`[${weaponName}]`, mapPos.x, textY);
     ctx.fillText(`[${weaponName}]`, mapPos.x, textY);
@@ -847,11 +905,11 @@ function drawPlayerBomb(pos, playerType) {
     const textY = mapPos.y + (drawNames ? (drawGuns ? 50 : 35) : (drawGuns ? 35 : 20));
 
     ctx.fillStyle = bombColor;
-    ctx.font = `${textSize}px Arial`;
+    ctx.font = `bold ${textSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.strokeText("[C4]", mapPos.x, textY);
     ctx.fillText("[C4]", mapPos.x, textY);
@@ -862,18 +920,18 @@ function drawBomb(pos, planted) {
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
-    const size = transformed.textSize * 0.7;
+    const size = minEntitySize * entitySizeMultiplier;
 
     ctx.beginPath();
     ctx.arc(mapPos.x, mapPos.y, size, 0, 2 * Math.PI);
     ctx.fillStyle = bombColor;
     ctx.fill();
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.stroke();
 
-    ctx.font = size * 1.2 + "px Arial";
+    ctx.font = `bold ${Math.max(size * 1.2, minTextSize)}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "white";
@@ -895,7 +953,8 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
 
     const transformed = mapAndTransformCoordinates(pos);
     const mapPos = transformed.pos;
-    let circleRadius = transformed.textSize * 0.6;
+
+    let circleRadius = minEntitySize * entitySizeMultiplier;
     const distance = circleRadius + 2;
     const radius = distance + 5;
     const arrowWidth = 35;
@@ -918,7 +977,7 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
     }
 
     if (dormant) {
-        ctx.font = "20px Arial";
+        ctx.font = `bold ${transformed.textSize}px Arial`;
         ctx.textAlign = "center";
         ctx.fillStyle = fillStyle;
         ctx.fillText("?", mapPos.x, mapPos.y);
@@ -977,7 +1036,7 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
             ctx.lineTo(lineOfSightX, lineOfSightY);
 
             ctx.strokeStyle = playerType == "Enemy" ? enemyColor : teamColor;
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 2;
             ctx.stroke();
         }
     }
@@ -1198,6 +1257,34 @@ function connect() {
     }
 }
 
+function updateTextSize(value) {
+    textSizeMultiplier = parseFloat(value);
+    const valueDisplay = document.getElementById('textSizeValue');
+    if (valueDisplay) valueDisplay.textContent = value;
+    localStorage.setItem('textSizeMultiplier', value);
+}
+
+function updateEntitySize(value) {
+    entitySizeMultiplier = parseFloat(value);
+    const valueDisplay = document.getElementById('entitySizeValue');
+    if (valueDisplay) valueDisplay.textContent = value;
+    localStorage.setItem('entitySizeMultiplier', value);
+}
+
+function resetSizes() {
+    const textSlider = document.getElementById('textSizeSlider');
+    const entitySlider = document.getElementById('entitySizeSlider');
+    const zoomSlider = document.getElementById('zoomLevelSlider');
+
+    if (textSlider) textSlider.value = DEFAULT_TEXT_SIZE.toString();
+    if (entitySlider) entitySlider.value = DEFAULT_ENTITY_SIZE.toString();
+    if (zoomSlider) zoomSlider.value = DEFAULT_ZOOM_LEVEL.toString();
+
+    updateTextSize(DEFAULT_TEXT_SIZE.toString());
+    updateEntitySize(DEFAULT_ENTITY_SIZE.toString());
+    updateZoomLevel(DEFAULT_ZOOM_LEVEL.toString());
+}
+
 function toggleZoom() {
     shouldZoom = !shouldZoom;
 }
@@ -1216,10 +1303,6 @@ function toggleGuns() {
 
 function toggleRotate() {
     rotateMap = !rotateMap;
-}
-
-function toggleCentered() {
-    playerCentered = !playerCentered;
 }
 
 function toggleMoneyReveal() {
@@ -1264,11 +1347,25 @@ function togglePerformanceMode() {
     }
 }
 
+window.addEventListener('resize', () => {
+    if (canvas) {
+        const canvasRect = canvas.getBoundingClientRect();
+        canvasScale = Math.min(canvasRect.width, canvasRect.height) / 1024;
+    }
+});
+
 addEventListener("DOMContentLoaded", () => {
     const savedDrawHealth = localStorage.getItem('drawHealth');
     drawHealth = savedDrawHealth !== null ? savedDrawHealth === 'true' : true;
+
     const savedDrawMoney = localStorage.getItem('drawMoney');
     drawMoney = savedDrawMoney !== null ? savedDrawMoney === 'true' : true;
+
+    const savedTextSize = localStorage.getItem('textSizeMultiplier');
+    textSizeMultiplier = savedTextSize !== null ? parseFloat(savedTextSize) : DEFAULT_TEXT_SIZE;
+
+    const savedEntitySize = localStorage.getItem('entitySizeMultiplier');
+    entitySizeMultiplier = savedEntitySize !== null ? parseFloat(savedEntitySize) : DEFAULT_ENTITY_SIZE;
 
     const checkboxes = {
         "zoomCheck": false,
@@ -1278,7 +1375,8 @@ addEventListener("DOMContentLoaded", () => {
         "moneyDisplay": drawMoney,
         "moneyReveal": false,
         "rotateCheck": true,
-        "centerCheck": true
+        "centerCheck": true,
+        "healthCheck": drawHealth
     };
 
     Object.entries(checkboxes).forEach(([id, state]) => {
@@ -1286,11 +1384,40 @@ addEventListener("DOMContentLoaded", () => {
         if (checkbox) checkbox.checked = state;
     });
 
+    const textSizeSlider = document.getElementById('textSizeSlider');
+    if (textSizeSlider) {
+        textSizeSlider.value = textSizeMultiplier;
+        const textSizeValue = document.getElementById('textSizeValue');
+        if (textSizeValue) textSizeValue.textContent = textSizeMultiplier;
+    }
+
+    const entitySizeSlider = document.getElementById('entitySizeSlider');
+    if (entitySizeSlider) {
+        entitySizeSlider.value = entitySizeMultiplier;
+        const entitySizeValue = document.getElementById('entitySizeValue');
+        if (entitySizeValue) entitySizeValue.textContent = entitySizeMultiplier;
+    }
+
+    const savedZoom = localStorage.getItem('playerCenteredZoom');
+    playerCenteredZoom = savedZoom !== null ? parseFloat(savedZoom) : DEFAULT_ZOOM_LEVEL;
+
+    const zoomSlider = document.getElementById('zoomLevelSlider');
+    if (zoomSlider) {
+        zoomSlider.value = playerCenteredZoom;
+        const zoomValue = document.getElementById('zoomLevelValue');
+        if (zoomValue) zoomValue.textContent = playerCenteredZoom;
+    }
+
+    updateZoomSliderVisibility();
+
     canvas = document.getElementById('canvas');
     if (canvas) {
         canvas.width = 1024;
         canvas.height = 1024;
         ctx = canvas.getContext('2d');
+
+        const canvasRect = canvas.getBoundingClientRect();
+        canvasScale = Math.min(canvasRect.width, canvasRect.height) / 1024;
 
         connect();
     } else {
