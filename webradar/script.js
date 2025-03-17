@@ -5,13 +5,17 @@ const enemyColor = "#ec040b"
 const bombColor = "#eda338"
 const textColor = "#d1d1d1"
 
+const DEFAULT_TEXT_SIZE = 1.2;
+const DEFAULT_ENTITY_SIZE = 1.5;
+const DEFAULT_ZOOM_LEVEL = 1.3;
+
 // Settings
 let shouldZoom = false;
 let rotateMap = true;
 let playerCentered = true;
+let showOffscreenIndicators = true;
 
 let drawHealth = true;
-
 let drawStats = true;
 let drawNames = true;
 let drawGuns = true;
@@ -22,10 +26,7 @@ let minTextSize = 16;
 let minEntitySize = 10;
 let textSizeMultiplier = 1.0;
 let entitySizeMultiplier = 1.0;
-
-const DEFAULT_TEXT_SIZE = 0.4;
-const DEFAULT_ENTITY_SIZE = 1.2;
-const DEFAULT_ZOOM_LEVEL = 2.4;
+let playerCenteredZoom = 1.0;
 
 const NETWORK_SETTINGS = {
     useInterpolation: true,
@@ -53,6 +54,7 @@ let lastKnownPositions = {};
 let entityInterpolationData = {};
 let lastUpdateTime = 0;
 let networkLatencyHistory = [];
+let lastPingSent = 0;
 
 let focusedPlayerYaw = 0;
 let focusedPlayerName = "YOU";
@@ -534,6 +536,11 @@ function updateZoomSliderVisibility() {
     }
 }
 
+function toggleOffscreenIndicators() {
+    showOffscreenIndicators = !showOffscreenIndicators;
+    localStorage.setItem('showOffscreenIndicators', showOffscreenIndicators ? 'true' : 'false');
+}
+
 function drawPlayerHealth(pos, playerType, health, hasBomb) {
     if (!map) return;
 
@@ -589,6 +596,8 @@ function drawEntities() {
         height: canvas.height + 100
     };
 
+    const offscreenEnemies = [];
+
     entityData.forEach((entity, index) => {
         const entityId = `entity_${index}`;
         let interpolatedEntity = null;
@@ -620,80 +629,178 @@ function drawEntities() {
             mapPos.y >= clipRect.y &&
             mapPos.y <= clipRect.y + clipRect.height;
 
-        if (!isVisible) return;
+        if (!isVisible && renderEntity.Player &&
+            renderEntity.Player.playerType === "Enemy" &&
+            playerCentered && showOffscreenIndicators) {
 
-        if (renderEntity.Bomb) {
-            drawBomb(renderEntity.Bomb.pos, renderEntity.Bomb.isPlanted);
-        } else if (renderEntity.Player) {
-            const player = renderEntity.Player;
-            let fillStyle = localColor;
+            offscreenEnemies.push({
+                pos: mapPos,
+                originalPos: pos,
+                player: renderEntity.Player
+            });
+        }
 
-            switch (player.playerType) {
-                case "Team": fillStyle = teamColor; break;
-                case "Enemy": fillStyle = enemyColor; break;
-            }
+        if (isVisible) {
+            if (renderEntity.Bomb) {
+                drawBomb(renderEntity.Bomb.pos, renderEntity.Bomb.isPlanted);
+            } else if (renderEntity.Player) {
+                const player = renderEntity.Player;
+                let fillStyle = localColor;
 
-            drawEntity(
-                player.pos,
-                fillStyle,
-                player.isDormant,
-                player.hasBomb,
-                player.yaw,
-                player.hasAwp,
-                player.playerType,
-                player.isScoped,
-                player.playerName,
-                false,
-                player.weaponId
-            );
-
-            if (!player.isDormant) {
-                if (drawNames) {
-                    drawPlayerName(
-                        player.pos,
-                        player.playerName,
-                        player.playerType,
-                        player.hasAwp,
-                        player.hasBomb,
-                        player.isScoped
-                    );
+                switch (player.playerType) {
+                    case "Team": fillStyle = teamColor; break;
+                    case "Enemy": fillStyle = enemyColor; break;
                 }
 
-                if (drawGuns) {
-                    drawPlayerWeapon(
-                        player.pos,
-                        player.playerType,
-                        player.weaponId
-                    );
-                }
+                drawEntity(
+                    player.pos,
+                    fillStyle,
+                    player.isDormant,
+                    player.hasBomb,
+                    player.yaw,
+                    player.hasAwp,
+                    player.playerType,
+                    player.isScoped,
+                    player.playerName,
+                    false,
+                    player.weaponId
+                );
 
-                if (player.hasBomb) {
-                    drawPlayerBomb(
-                        player.pos,
-                        player.playerType
-                    );
-                }
+                if (!player.isDormant) {
+                    if (drawNames) {
+                        drawPlayerName(
+                            player.pos,
+                            player.playerName,
+                            player.playerType,
+                            player.hasAwp,
+                            player.hasBomb,
+                            player.isScoped
+                        );
+                    }
 
-                if (drawMoney && typeof player.money === 'number') {
-                    drawPlayerMoney(
-                        player.pos,
-                        player.playerType,
-                        player.money,
-                        player.hasBomb
-                    );
-                }
+                    if (drawGuns) {
+                        drawPlayerWeapon(
+                            player.pos,
+                            player.playerType,
+                            player.weaponId
+                        );
+                    }
 
-                if (drawHealth && typeof player.health === 'number') {
-                    drawPlayerHealth(
-                        player.pos,
-                        player.playerType,
-                        player.health,
-                        player.hasBomb
-                    );
+                    if (player.hasBomb) {
+                        drawPlayerBomb(
+                            player.pos,
+                            player.playerType
+                        );
+                    }
+
+                    if (drawMoney && typeof player.money === 'number') {
+                        drawPlayerMoney(
+                            player.pos,
+                            player.playerType,
+                            player.money,
+                            player.hasBomb
+                        );
+                    }
+
+                    if (drawHealth && typeof player.health === 'number') {
+                        drawPlayerHealth(
+                            player.pos,
+                            player.playerType,
+                            player.health,
+                            player.hasBomb
+                        );
+                    }
                 }
             }
         }
     });
+
+    if (playerCentered && showOffscreenIndicators) {
+        drawOffscreenIndicators(offscreenEnemies);
+    }
+}
+
+function drawOffscreenIndicators(offscreenEnemies) {
+    if (!offscreenEnemies.length) return;
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const padding = 40;
+
+    offscreenEnemies.forEach(enemy => {
+        const dx = enemy.pos.x - centerX;
+        const dy = enemy.pos.y - centerY;
+        let angle = Math.atan2(dy, dx);
+
+        const indicatorRadius = Math.min(canvas.width, canvas.height) / 2 - padding;
+        let indicatorX = centerX + Math.cos(angle) * indicatorRadius;
+        let indicatorY = centerY + Math.sin(angle) * indicatorRadius;
+
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const maxDistance = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
+        const opacity = 0.4 + (1 - Math.min(distance / maxDistance, 1)) * 0.6;
+
+        drawOffscreenIndicator(
+            indicatorX,
+            indicatorY,
+            angle,
+            enemyColor,
+            opacity,
+            enemy.player
+        );
+    });
+}
+
+function drawOffscreenIndicator(x, y, angle, color, opacity, player) {
+    const size = 14 * entitySizeMultiplier;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(size, 0);
+    ctx.lineTo(-size / 2, -size / 2);
+    ctx.lineTo(-size / 2, size / 2);
+    ctx.closePath();
+
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    ctx.fill();
+
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (player.hasAwp) {
+        ctx.beginPath();
+        ctx.arc(-size / 2, 0, size / 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'orange';
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    if (drawHealth && typeof player.health === 'number') {
+        let healthColor;
+        if (player.health > 70) {
+            healthColor = "#32CD32";
+        } else if (player.health > 30) {
+            healthColor = "#FFFF00";
+        } else {
+            healthColor = "#FF0000";
+        }
+
+        ctx.beginPath();
+        ctx.arc(-size / 2, -size / 2, size / 4, 0, Math.PI * 2);
+        ctx.fillStyle = healthColor;
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    ctx.restore();
 }
 
 function drawBombTimer() {
@@ -1367,6 +1474,9 @@ addEventListener("DOMContentLoaded", () => {
     const savedEntitySize = localStorage.getItem('entitySizeMultiplier');
     entitySizeMultiplier = savedEntitySize !== null ? parseFloat(savedEntitySize) : DEFAULT_ENTITY_SIZE;
 
+    const savedOffscreenIndicators = localStorage.getItem('showOffscreenIndicators');
+    showOffscreenIndicators = savedOffscreenIndicators !== null ? savedOffscreenIndicators === 'true' : true;
+
     const checkboxes = {
         "zoomCheck": false,
         "statsCheck": true,
@@ -1376,7 +1486,8 @@ addEventListener("DOMContentLoaded", () => {
         "moneyReveal": false,
         "rotateCheck": true,
         "centerCheck": true,
-        "healthCheck": drawHealth
+        "healthCheck": drawHealth,
+        "offscreenCheck": showOffscreenIndicators
     };
 
     Object.entries(checkboxes).forEach(([id, state]) => {
