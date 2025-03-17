@@ -10,7 +10,7 @@ use std::io::Write;
 use tokio::sync::{RwLock, Mutex};
 use tower_http::services::ServeDir;
 
-use crate::comms::{RadarData, ArcRwlockRadarData, EntityData};
+use crate::comms::{RadarData};
 
 struct ClientState {
     last_entity_count: usize,

@@ -33,22 +33,6 @@ pub struct PlayerData {
 
 impl PlayerData {
     pub fn new(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool,
-               is_scoped: bool, player_name: String, weapon_id: i16, health: u32) -> PlayerData {
-        PlayerData {
-            pos,
-            yaw,
-            player_type,
-            has_bomb,
-            has_awp,
-            is_scoped,
-            player_name,
-            weapon_id,
-            money: 0,
-            health
-        }
-    }
-
-    pub fn new_with_money(pos: Vec3, yaw: f32, player_type: PlayerType, has_bomb: bool, has_awp: bool,
                     is_scoped: bool, player_name: String, weapon_id: i16, money: i32, health: u32) -> PlayerData {
         PlayerData {
             pos,
@@ -62,14 +46,6 @@ impl PlayerData {
             money,
             health
         }
-    }
-
-    pub fn get_pos(&self) -> &Vec3 {
-        &self.pos
-    }
-
-    pub fn get_player_name(&self) -> &str {
-        &self.player_name
     }
 }
 
@@ -190,10 +166,6 @@ impl RadarData {
 
     pub fn get_entities(&self) -> &Vec<EntityData> {
         &self.player_data
-    }
-
-    pub fn set_entities(&mut self, entities: Vec<EntityData>) {
-        self.player_data = entities;
     }
 }
 

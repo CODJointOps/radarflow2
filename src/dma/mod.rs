@@ -196,7 +196,7 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
                 entity_data.push(
                     EntityData::Player(
-                        PlayerData::new_with_money(
+                        PlayerData::new(
                             local_data.pos,
                             local_data.yaw,
                             PlayerType::Local,
@@ -238,7 +238,7 @@ pub async fn run(radar_data: ArcRwlockRadarData, connector: Connector, pcileech_
 
                         entity_data.push(
                             EntityData::Player(
-                                PlayerData::new_with_money(
+                                PlayerData::new(
                                     player_data.pos,
                                     player_data.yaw,
                                     player_type,
