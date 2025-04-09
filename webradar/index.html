@@ -81,6 +81,12 @@
                         <input type="range" id="entitySizeSlider" min="0.5" max="2.0" step="0.1" value="1.0"
                             style="width: 100%; margin: 5px 0;" oninput="updateEntitySize(this.value)">
                     </div>
+                    <div class="size-control" style="margin-top: 8px;">
+                        <label for="healthBarSizeSlider">Health Bar Size: </label>
+                        <span id="healthBarSizeValue">1.0</span><br>
+                        <input type="range" id="healthBarSizeSlider" min="0.5" max="2.5" step="0.1" value="1.0"
+                            style="width: 100%; margin: 5px 0;" oninput="updateHealthBarSize(this.value)">
+                    </div>
                 </div>
                 <button id="showDangerousBtn" onclick="toggleDangerousOptions()">Show Dangerous Options</button>
                 <div class="dangerous-options" id="dangerousOptions">

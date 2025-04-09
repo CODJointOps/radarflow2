@@ -8,6 +8,7 @@ const textColor = "#d1d1d1"
 const DEFAULT_TEXT_SIZE = 1.2;
 const DEFAULT_ENTITY_SIZE = 1.5;
 const DEFAULT_ZOOM_LEVEL = 1.3;
+const DEFAULT_HEALTH_BAR_SIZE = 1.0;
 
 // Settings
 let shouldZoom = false;
@@ -26,6 +27,7 @@ let minTextSize = 16;
 let minEntitySize = 10;
 let textSizeMultiplier = 1.0;
 let entitySizeMultiplier = 1.0;
+let healthBarSizeMultiplier = 1.0;
 let playerCenteredZoom = 1.0;
 
 const NETWORK_SETTINGS = {
@@ -664,8 +666,8 @@ function drawPlayerHealth(pos, playerType, health, hasBomb) {
         healthColor = "#FF0000";
     }
 
-    const barWidth = Math.max(60, 40 * textSizeMultiplier);
-    const barHeight = Math.max(8, 5 * textSizeMultiplier);
+    const barWidth = Math.max(60, 40 * textSizeMultiplier) * healthBarSizeMultiplier;
+    const barHeight = Math.max(8, 5 * textSizeMultiplier) * healthBarSizeMultiplier;
 
     ctx.fillStyle = "#444444";
     ctx.fillRect(mapPos.x - barWidth / 2, textY, barWidth, barHeight);
@@ -1561,18 +1563,28 @@ function updateEntitySize(value) {
     localStorage.setItem('entitySizeMultiplier', value);
 }
 
+function updateHealthBarSize(value) {
+    healthBarSizeMultiplier = parseFloat(value);
+    const valueDisplay = document.getElementById('healthBarSizeValue');
+    if (valueDisplay) valueDisplay.textContent = value;
+    localStorage.setItem('healthBarSizeMultiplier', value);
+}
+
 function resetSizes() {
     const textSlider = document.getElementById('textSizeSlider');
     const entitySlider = document.getElementById('entitySizeSlider');
     const zoomSlider = document.getElementById('zoomLevelSlider');
+    const healthBarSlider = document.getElementById('healthBarSizeSlider');
 
     if (textSlider) textSlider.value = DEFAULT_TEXT_SIZE.toString();
     if (entitySlider) entitySlider.value = DEFAULT_ENTITY_SIZE.toString();
     if (zoomSlider) zoomSlider.value = DEFAULT_ZOOM_LEVEL.toString();
+    if (healthBarSlider) healthBarSlider.value = DEFAULT_HEALTH_BAR_SIZE.toString();
 
     updateTextSize(DEFAULT_TEXT_SIZE.toString());
     updateEntitySize(DEFAULT_ENTITY_SIZE.toString());
     updateZoomLevel(DEFAULT_ZOOM_LEVEL.toString());
+    updateHealthBarSize(DEFAULT_HEALTH_BAR_SIZE.toString());
 }
 
 function toggleZoom() {
@@ -1656,6 +1668,9 @@ addEventListener("DOMContentLoaded", () => {
 
     const savedEntitySize = localStorage.getItem('entitySizeMultiplier');
     entitySizeMultiplier = savedEntitySize !== null ? parseFloat(savedEntitySize) : DEFAULT_ENTITY_SIZE;
+    
+    const savedHealthBarSize = localStorage.getItem('healthBarSizeMultiplier');
+    healthBarSizeMultiplier = savedHealthBarSize !== null ? parseFloat(savedHealthBarSize) : DEFAULT_HEALTH_BAR_SIZE;
 
     const savedOffscreenIndicators = localStorage.getItem('showOffscreenIndicators');
     showOffscreenIndicators = savedOffscreenIndicators !== null ? savedOffscreenIndicators === 'true' : true;
@@ -1690,6 +1705,13 @@ addEventListener("DOMContentLoaded", () => {
         entitySizeSlider.value = entitySizeMultiplier;
         const entitySizeValue = document.getElementById('entitySizeValue');
         if (entitySizeValue) entitySizeValue.textContent = entitySizeMultiplier;
+    }
+
+    const healthBarSizeSlider = document.getElementById('healthBarSizeSlider');
+    if (healthBarSizeSlider) {
+        healthBarSizeSlider.value = healthBarSizeMultiplier;
+        const healthBarSizeValue = document.getElementById('healthBarSizeValue');
+        if (healthBarSizeValue) healthBarSizeValue.textContent = healthBarSizeMultiplier;
     }
 
     const savedZoom = localStorage.getItem('playerCenteredZoom');
