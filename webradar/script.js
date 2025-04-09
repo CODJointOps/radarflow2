@@ -51,15 +51,21 @@ let currentFps = 0;
 let temporarilyDisableRotation = false;
 let rotationDisabledUntilRespawn = false;
 let lastKnownPositions = {};
+let deadPlayers = {};
 let entityInterpolationData = {};
 let lastUpdateTime = 0;
 let networkLatencyHistory = [];
 let lastPingSent = 0;
 
+// Special values for spectator mode
+const FULL_MAP_VIEW = "FULL_MAP";
+const LOCAL_PLAYER_VIEW = "YOU";
+
 let focusedPlayerYaw = 0;
-let focusedPlayerName = "YOU";
+let focusedPlayerName = localStorage.getItem('selectedPlayer') || LOCAL_PLAYER_VIEW;
 let focusedPlayerPos = null;
 let playerList = {};
+let lastFocusedPlayer = localStorage.getItem('lastFocusedPlayer') || null;
 
 // Common
 let canvas = null;
@@ -323,7 +329,8 @@ function processPlayerPositions() {
     focusedPlayerPos = null;
     focusedPlayerYaw = 0;
     let oldPlayerList = { ...playerList };
-    playerList = {};
+    let newPlayerList = {};
+    let wasPlayerAlive = oldPlayerList[focusedPlayerName] && !oldPlayerList[focusedPlayerName].isDead;
 
     entityData.forEach((data, index) => {
         const entityId = `entity_${index}`;
@@ -337,23 +344,25 @@ function processPlayerPositions() {
             if (player.playerType === "Local") {
                 localYaw = player.yaw;
                 localPlayerPos = player.pos;
-                playerList["YOU"] = {
+                newPlayerList[LOCAL_PLAYER_VIEW] = {
                     pos: player.pos,
                     yaw: player.yaw
                 };
 
-                lastKnownPositions["YOU"] = player.pos;
+                lastKnownPositions[LOCAL_PLAYER_VIEW] = player.pos;
+                if (deadPlayers[LOCAL_PLAYER_VIEW]) delete deadPlayers[LOCAL_PLAYER_VIEW];
             } else {
-                playerList[player.playerName] = {
+                newPlayerList[player.playerName] = {
                     pos: player.pos,
                     yaw: player.yaw
                 };
 
                 lastKnownPositions[player.playerName] = player.pos;
+                if (deadPlayers[player.playerName]) delete deadPlayers[player.playerName];
             }
 
             if (player.playerName === focusedPlayerName ||
-                (focusedPlayerName === "YOU" && player.playerType === "Local")) {
+                (focusedPlayerName === LOCAL_PLAYER_VIEW && player.playerType === "Local")) {
                 focusedPlayerPos = player.pos;
                 focusedPlayerYaw = player.yaw;
 
@@ -365,10 +374,91 @@ function processPlayerPositions() {
         }
     });
 
-    if (focusedPlayerPos === null) {
-        if (oldPlayerList[focusedPlayerName] && oldPlayerList[focusedPlayerName].pos) {
-            console.log("[radarflow] Focused player disappeared, disabling rotation until respawn");
-            rotationDisabledUntilRespawn = true;
+    for (const playerName in oldPlayerList) {
+        if (!newPlayerList[playerName] && playerName !== FULL_MAP_VIEW) {
+            deadPlayers[playerName] = {
+                pos: lastKnownPositions[playerName] || null,
+                yaw: oldPlayerList[playerName].yaw || 0,
+                lastSeen: Date.now()
+            };
+            
+            if (playerName === focusedPlayerName && wasPlayerAlive) {
+                console.log(`[radarflow] Focused player ${playerName} died, switching to full map view`);
+                localStorage.setItem('lastFocusedPlayer', playerName);
+                lastFocusedPlayer = playerName;
+                focusedPlayerName = FULL_MAP_VIEW;
+                localStorage.setItem('selectedPlayer', FULL_MAP_VIEW);
+                playerCentered = false;
+                update = true;
+            }
+        }
+    }
+
+    for (const playerName in deadPlayers) {
+        if (!newPlayerList[playerName] && playerName !== FULL_MAP_VIEW) {
+            if (Date.now() - deadPlayers[playerName].lastSeen < 60000) {
+                newPlayerList[playerName] = {
+                    pos: deadPlayers[playerName].pos,
+                    yaw: deadPlayers[playerName].yaw,
+                    isDead: true
+                };
+            }
+        }
+    }
+
+    newPlayerList[FULL_MAP_VIEW] = {
+        isFullMap: true
+    };
+
+    playerList = newPlayerList;
+
+    if (focusedPlayerName === FULL_MAP_VIEW && lastFocusedPlayer) {
+        const playerIsBackAlive = newPlayerList[lastFocusedPlayer] && !newPlayerList[lastFocusedPlayer].isDead;
+        
+        if (playerIsBackAlive) {
+            console.log(`[radarflow] Last focused player ${lastFocusedPlayer} is back alive, reselecting them`);
+            focusedPlayerName = lastFocusedPlayer;
+            localStorage.setItem('selectedPlayer', lastFocusedPlayer);
+            
+            if (document.getElementById('centerCheck').checked) {
+                playerCentered = true;
+            }
+            
+            focusedPlayerPos = newPlayerList[lastFocusedPlayer].pos;
+            focusedPlayerYaw = newPlayerList[lastFocusedPlayer].yaw;
+            
+            rotationDisabledUntilRespawn = false;
+            
+            const dropdown = document.getElementById('playerSelect');
+            if (dropdown) {
+                dropdown.value = lastFocusedPlayer;
+            }
+            
+            update = true;
+        }
+    }
+
+    // Handle focused player state
+    if (focusedPlayerName === FULL_MAP_VIEW) {
+        playerCentered = false;
+    } else if (focusedPlayerPos === null) {
+        if (playerList[focusedPlayerName]?.isDead) {
+            console.log(`[radarflow] Focused player ${focusedPlayerName} is dead, switching to full map view`);
+            localStorage.setItem('lastFocusedPlayer', focusedPlayerName);
+            lastFocusedPlayer = focusedPlayerName;
+            focusedPlayerName = FULL_MAP_VIEW;
+            localStorage.setItem('selectedPlayer', FULL_MAP_VIEW);
+            playerCentered = false;
+            update = true;
+        } 
+        else if (lastKnownPositions[focusedPlayerName]) {
+            console.log("[radarflow] Focused player disappeared, switching to full map view");
+            localStorage.setItem('lastFocusedPlayer', focusedPlayerName);
+            lastFocusedPlayer = focusedPlayerName;
+            focusedPlayerName = FULL_MAP_VIEW;
+            localStorage.setItem('selectedPlayer', FULL_MAP_VIEW);
+            playerCentered = false;
+            update = true;
         }
     }
 }
@@ -378,7 +468,12 @@ function drawImage() {
 
     ctx.save();
 
-    if (playerCentered && focusedPlayerPos) {
+    if (focusedPlayerName === FULL_MAP_VIEW || !playerCentered) {
+        if (rotateMap && !temporarilyDisableRotation) {
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        }
+    } else if (playerCentered && focusedPlayerPos) {
         if (playerCenteredZoom !== 1.0) {
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.scale(playerCenteredZoom, playerCenteredZoom);
@@ -527,6 +622,10 @@ function updateZoomLevel(value) {
 function toggleCentered() {
     playerCentered = !playerCentered;
     updateZoomSliderVisibility();
+    if (focusedPlayerName === FULL_MAP_VIEW) {
+        playerCentered = false;
+        document.getElementById('centerCheck').checked = false;
+    }
 }
 
 function updateZoomSliderVisibility() {
@@ -864,36 +963,99 @@ function updatePlayerDropdown() {
     if (!dropdown) return;
 
     const currentValue = dropdown.value;
+    const savedPlayer = localStorage.getItem('selectedPlayer');
 
-    while (dropdown.options.length > 1) {
-        dropdown.remove(1);
+    while (dropdown.options.length > 0) {
+        dropdown.remove(0);
     }
 
+    const fullMapOption = document.createElement('option');
+    fullMapOption.value = FULL_MAP_VIEW;
+    fullMapOption.textContent = "FULL MAP";
+    dropdown.appendChild(fullMapOption);
+    
+    const localOption = document.createElement('option');
+    localOption.value = "local";
+    localOption.textContent = "YOU";
+    dropdown.appendChild(localOption);
+
     for (const playerName in playerList) {
-        if (playerName !== "YOU") {
+        if (playerName !== LOCAL_PLAYER_VIEW && playerName !== FULL_MAP_VIEW) {
             const option = document.createElement('option');
             option.value = playerName;
-            option.textContent = playerName;
+            
+            if (playerList[playerName].isDead) {
+                option.textContent = `${playerName} (DEAD)`;
+                option.style.color = "#777777";
+            } else {
+                option.textContent = playerName;
+            }
+            
             dropdown.appendChild(option);
         }
     }
 
-    if (Object.keys(playerList).includes(currentValue)) {
+    if (Object.keys(playerList).includes(currentValue) || currentValue === "local" || currentValue === FULL_MAP_VIEW) {
         dropdown.value = currentValue;
-    } else {
-        dropdown.value = "local";
-        focusedPlayerName = "YOU";
-        if (playerList["YOU"]) {
-            focusedPlayerPos = playerList["YOU"].pos;
-            focusedPlayerYaw = playerList["YOU"].yaw;
+    } 
+    else if (savedPlayer === FULL_MAP_VIEW) {
+        dropdown.value = FULL_MAP_VIEW;
+        focusedPlayerName = FULL_MAP_VIEW;
+        playerCentered = false;
+    }
+    else if (savedPlayer && Object.keys(playerList).includes(savedPlayer)) {
+        dropdown.value = savedPlayer;
+        focusedPlayerName = savedPlayer;
+        
+        if (playerList[savedPlayer]?.isDead) {
+            dropdown.value = FULL_MAP_VIEW;
+            focusedPlayerName = FULL_MAP_VIEW;
+            localStorage.setItem('selectedPlayer', FULL_MAP_VIEW);
+            playerCentered = false;
         }
+    } 
+    else {
+        dropdown.value = FULL_MAP_VIEW;
+        focusedPlayerName = FULL_MAP_VIEW;
+        localStorage.setItem('selectedPlayer', FULL_MAP_VIEW);
+        playerCentered = false;
     }
 }
 
 function changePlayerFocus() {
     const dropdown = document.getElementById('playerSelect');
-    focusedPlayerName = dropdown.value === "local" ? "YOU" : dropdown.value;
-    rotationDisabledUntilRespawn = false;
+    
+    if (dropdown.value !== "local" && 
+        dropdown.value !== FULL_MAP_VIEW && 
+        playerList[dropdown.value]?.isDead) {
+        
+        console.log(`[radarflow] Attempted to focus on dead player ${dropdown.value}, switching to full map view`);
+        localStorage.setItem('lastFocusedPlayer', dropdown.value);
+        lastFocusedPlayer = dropdown.value;
+        dropdown.value = FULL_MAP_VIEW;
+        focusedPlayerName = FULL_MAP_VIEW;
+        playerCentered = false;
+    } 
+    else if (dropdown.value === FULL_MAP_VIEW) {
+        focusedPlayerName = FULL_MAP_VIEW;
+        playerCentered = false;
+    } 
+    else {
+        localStorage.removeItem('lastFocusedPlayer');
+        lastFocusedPlayer = null;
+        focusedPlayerName = dropdown.value === "local" ? LOCAL_PLAYER_VIEW : dropdown.value;
+        
+        playerCentered = document.getElementById('centerCheck').checked;
+        
+        if (playerList[focusedPlayerName]) {
+            focusedPlayerPos = playerList[focusedPlayerName].pos;
+            focusedPlayerYaw = playerList[focusedPlayerName].yaw;
+        }
+        
+        rotationDisabledUntilRespawn = false;
+    }
+    
+    localStorage.setItem('selectedPlayer', focusedPlayerName);
     update = true;
 }
 
@@ -1067,7 +1229,9 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
     const arrowWidth = 35;
 
     const isFocusedPlayer = playerName === focusedPlayerName ||
-        (focusedPlayerName === "YOU" && playerType === "Local");
+        (focusedPlayerName === LOCAL_PLAYER_VIEW && playerType === "Local");
+    
+    const isDeadPlayer = playerList[playerName]?.isDead || false;
 
     let adjustedYaw = yaw;
 
@@ -1083,11 +1247,30 @@ function drawEntity(pos, fillStyle, dormant, hasBomb, yaw, hasAwp, playerType, i
         }
     }
 
-    if (dormant) {
-        ctx.font = `bold ${transformed.textSize}px Arial`;
-        ctx.textAlign = "center";
-        ctx.fillStyle = fillStyle;
-        ctx.fillText("?", mapPos.x, mapPos.y);
+    if (dormant || isDeadPlayer) {
+        if (isDeadPlayer) {
+            ctx.beginPath();
+            ctx.arc(mapPos.x, mapPos.y, circleRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = "#777777";
+            ctx.fill();
+            ctx.closePath();
+
+            const xSize = circleRadius * 0.7;
+            ctx.beginPath();
+            ctx.moveTo(mapPos.x - xSize, mapPos.y - xSize);
+            ctx.lineTo(mapPos.x + xSize, mapPos.y + xSize);
+            ctx.moveTo(mapPos.x + xSize, mapPos.y - xSize);
+            ctx.lineTo(mapPos.x - xSize, mapPos.y + xSize);
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+        } else {
+            ctx.font = `bold ${transformed.textSize}px Arial`;
+            ctx.textAlign = "center";
+            ctx.fillStyle = fillStyle;
+            ctx.fillText("?", mapPos.x, mapPos.y);
+        }
     } else {
         if (isFocusedPlayer) {
             ctx.beginPath();
